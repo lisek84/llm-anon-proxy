@@ -16,7 +16,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 
-from . import anonymizer, dictionary, leaklog, llm_detector, vault
+from . import anonymizer, dictionary, leaklog, llm_detector, preflight, vault
 from .config import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
@@ -29,6 +29,9 @@ _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "acc
 
 @app.on_event("startup")
 async def _startup() -> None:
+    # Isolation preflight first: in 'enforce' mode this raises and the server
+    # does not come up if the agent could read the de-anonymization data.
+    preflight.run()
     vault.init()
     dictionary.load()
     log.info("context=%s upstream=%s llm=%s db=%s",

@@ -75,6 +75,25 @@ When enabled and Ollama is unreachable, requests are **blocked** (fail-closed)
 rather than sent half-anonymized. Set `ANONPROXY_LLM_FAIL_CLOSED=false` to fall
 back to dictionary+regex instead.
 
+## 3. Isolate the proxy from the agent (required for real use)
+
+The proxy's files are a full de-anonymization oracle; the Claude Code agent must
+not be able to read them. Run the proxy as a **dedicated user** (or container /
+WSL distro / host). Helper (review first; uses sudo, starts nothing):
+
+```bash
+sudo bash scripts/setup-isolated-user.sh     # creates user 'anonproxy' at /opt/anonproxy
+```
+
+Then enforce it at startup:
+
+```bash
+export ANONPROXY_CLIENT_USER=$USER     # the user that runs Claude Code
+export ANONPROXY_ISOLATION=enforce     # refuse to start if not isolated
+```
+
+Full rationale and the weaker/stronger options: [THREAT-MODEL.md](THREAT-MODEL.md).
+
 ## Point Claude Code at the proxy
 
 ```bash
@@ -86,6 +105,6 @@ claude
 
 ```bash
 curl -s http://127.0.0.1:8787/health          # {"status":"ok",...}
-python -m pytest -q                            # 21 passing
+python -m pytest -q                            # 27 passing
 python scripts/dev/bench_llm.py qwen3.5:4b     # LLM layer score (needs Ollama)
 ```

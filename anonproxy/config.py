@@ -40,6 +40,20 @@ class Config:
     # than forward partially-anonymized data.
     LLM_FAIL_CLOSED: bool = os.getenv("ANONPROXY_LLM_FAIL_CLOSED", "true").lower() == "true"
 
+    # ── Isolation from the Claude Code agent ──────────────────────────────────
+    # The vault, dictionary and secret key together are a full de-anonymization
+    # oracle. If the agent can read them, the tool is pointless. The proxy must
+    # run where Claude Code's file tools cannot reach those files — a different
+    # OS user, container, WSL distro or host. Claude Code only ever talks to the
+    # proxy over the loopback/network port, never its filesystem.
+    #   off     — no check (not recommended)
+    #   warn    — harden perms and log a prominent warning (default)
+    #   enforce — refuse to start unless isolation from CLIENT_USER is confirmed
+    ISOLATION: str = os.getenv("ANONPROXY_ISOLATION", "warn").lower()
+    # The OS username that runs Claude Code. When set, the preflight verifies
+    # that user cannot read the proxy's secret files.
+    CLIENT_USER: str = os.getenv("ANONPROXY_CLIENT_USER", "")
+
     def __init__(self) -> None:
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
 

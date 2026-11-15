@@ -1,0 +1,103 @@
+# Threat model
+
+## The core assumption
+
+This tool only works if the thing it is hiding data *from* cannot read the data
+it uses to do the hiding.
+
+The proxy keeps, on disk:
+
+| File | Why it is dangerous |
+|---|---|
+| `data/mappings.db` | the **full** original ↔ surrogate table — a complete reverse lookup |
+| `dictionary.yaml` | your real domains, hosts, IPs, usernames, org names, paths |
+| `data/secret.key` | the HMAC key that derives every surrogate |
+| `data/rotate.log.jsonl` | masked, but confirms which secrets existed |
+
+Anyone — or any process — that can read these can undo the anonymization
+completely. The single most important one is `mappings.db`: it *is* the answer
+key.
+
+## Why "don't run it where Claude Code runs" matters
+
+Claude Code is an agent with file tools (`Read`, `Grep`, `Bash`). If it runs as
+the **same OS user** as the proxy, it can just read `mappings.db` and
+`dictionary.yaml` directly — the network anonymization becomes theatre. The
+model would be one `cat` away from every real value.
+
+**No code in the proxy can prevent this** when the agent shares the proxy's UID:
+same user ⇒ same file permissions. The protection has to come from the operating
+system, not from the application.
+
+## Required deployment: isolate the proxy
+
+Run the proxy somewhere Claude Code's file tools cannot reach its files. In
+increasing order of strength:
+
+1. **A dedicated OS user** (simplest on one machine). The proxy runs as
+   `anonproxy` with a `0700` data dir; Claude Code runs as you and cannot read
+   it. Helper (review first, it uses sudo, starts nothing):
+
+   ```bash
+   sudo bash scripts/setup-isolated-user.sh
+   ```
+
+2. **A container** — Ollama and/or the proxy in Docker, data in a volume the
+   host user does not mount. Claude Code on the host reaches only the port.
+
+3. **A separate WSL distro** — run the proxy in a second distro; the agent in
+   your working distro sees only `127.0.0.1:8787` (or the mapped port).
+
+4. **A separate host / VPS** with an SSH tunnel — the agent's machine never has
+   the files at all. Strongest, and the right choice for shared or team use.
+
+In every case Claude Code talks to the proxy **only over the port**
+(`ANTHROPIC_BASE_URL`), never its filesystem.
+
+## The built-in preflight
+
+On startup the proxy runs `anonproxy/preflight.py`, which:
+
+* hardens permissions (`data/` → `0700`, secret files → `0600`), and
+* checks isolation against `ANONPROXY_CLIENT_USER` (the user that runs Claude
+  Code): it refuses the obvious co-located case (proxy user == client user) and
+  verifies that user cannot read the sensitive files.
+
+Modes via `ANONPROXY_ISOLATION`:
+
+| Mode | Behaviour |
+|---|---|
+| `warn` (default) | harden perms, log a prominent warning if not isolated |
+| `enforce` | **refuse to start** unless isolation from `CLIENT_USER` is confirmed |
+| `off` | skip the check (not recommended) |
+
+Run it on its own any time:
+
+```bash
+ANONPROXY_CLIENT_USER=$USER python -m anonproxy.preflight ; echo "exit=$?"
+# exit 0 = isolated, 1 = problems found
+```
+
+Recommended for real use:
+
+```bash
+export ANONPROXY_CLIENT_USER=<the-user-that-runs-claude-code>
+export ANONPROXY_ISOLATION=enforce
+```
+
+The check is a backstop, not the mechanism. It can tell you that you are *not*
+isolated; only the OS boundary actually isolates you. A same-UID agent that is
+determined and reads files before the proxy starts is out of scope — the answer
+there is a different user/container/host, which is why `enforce` insists on it.
+
+## What this tool still does not protect against
+
+* **Encrypted or transformed data** — it substitutes literals; it cannot scrub a
+  value that was hashed, base64'd or encrypted after you saw it.
+* **Context** — paths, schema names and service layout can identify you even
+  with every literal replaced.
+* **Prompt injection** from tool output (a server banner telling the model to do
+  something) — unaffected by anonymization.
+* **Local Claude Code transcripts** in `~/.claude/projects/*.jsonl`, which store
+  the real values the agent saw. Protect or clear them separately.
+* **Compromise of the proxy host/user** itself.

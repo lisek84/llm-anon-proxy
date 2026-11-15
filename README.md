@@ -19,6 +19,21 @@ It is a **risk-reduction layer, not a guarantee**. Encrypted blobs, data derived
 from a value (hashes, base64), and context ("a creators payout table") cannot be
 scrubbed by substitution. Do what you can, and keep the rotation log.
 
+## ⚠️ Do not run the proxy where Claude Code runs
+
+The proxy's files — `data/mappings.db` (the full original↔surrogate table),
+`dictionary.yaml`, and `data/secret.key` — are a complete de-anonymization
+oracle. If the Claude Code agent runs as the **same OS user**, it can simply read
+them with its file tools and reverse everything; no code can stop a same-UID
+reader. **Run the proxy as a different OS user / container / WSL distro / host**,
+so Claude Code reaches it only over the port. A startup preflight enforces this —
+see **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)**.
+
+```bash
+export ANONPROXY_CLIENT_USER=<user-that-runs-claude-code>
+export ANONPROXY_ISOLATION=enforce      # refuse to start if not isolated
+```
+
 ## Why a proxy and not hooks
 
 The proxy sees the entire request: your prompt, the full message history,
@@ -30,6 +45,8 @@ all of that. Everything is anonymized on the way out and restored on the way in.
 * **[docs/INSTALL.md](docs/INSTALL.md)** — proxy setup + the two Ollama options.
 * **[docs/USAGE.md](docs/USAGE.md)** — daily workflow, the dictionary, contexts,
   the rotation log, verifying, troubleshooting.
+* **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)** — why the proxy must be
+  isolated from the agent, how to deploy it, and what it does not protect.
 
 ## Setup
 
