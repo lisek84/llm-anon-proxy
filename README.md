@@ -1,5 +1,9 @@
 # llm-anon-proxy
 
+> Keep your private data out of Claude Code's API traffic — replace IPs,
+> domains, hostnames and secrets with reversible surrogates before requests
+> leave the machine, and restore them in the response.
+
 A local proxy that sits between Claude Code and the Anthropic API and keeps your
 own data off the wire. It replaces your private values (domains, IPs, hostnames,
 credentials, tokens…) with deterministic placeholders **before** anything leaves
@@ -180,3 +184,16 @@ Design informed by a review of `zeroc00I/DontFeedTheAI` (MIT). The regex ideas
 and the fail-closed-on-LLM-down principle come from there; the collision-free
 deterministic vault, full-history + `tool_use` coverage, real streaming
 restoration, loopback-only binding, and the rotation log are this project's.
+
+## Repository metadata
+
+GitHub topics and the About description are set in the repo UI (Settings → About),
+not from a file. Suggested values, recorded here for reference:
+
+**Description:** Local proxy that keeps your private data out of Claude Code's API
+traffic — swaps domains, IPs, hostnames, credentials and tokens for deterministic
+surrogates before requests leave the machine and restores them on the way back.
+
+**Topics:** `claude-code` `anthropic` `claude` `llm` `privacy` `anonymization`
+`pseudonymization` `redaction` `data-loss-prevention` `pii` `secrets-detection`
+`proxy` `ollama` `fastapi` `python`
