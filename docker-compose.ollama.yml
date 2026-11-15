@@ -1,0 +1,47 @@
+# Option A — run Ollama in Docker and point the proxy at it.
+#
+#   docker compose -f docker-compose.ollama.yml up -d      # start + pull model
+#   ANONPROXY_LLM=true ANONPROXY_OLLAMA_HOST=http://localhost:11434 python -m anonproxy
+#
+# The proxy itself stays on the host (loopback). Only Ollama runs in Docker.
+# GPU is optional: if you don't have the NVIDIA Container Toolkit, delete the
+# `deploy:` block and it runs on CPU (slower).
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: anonproxy-ollama
+    ports:
+      - "127.0.0.1:11434:11434"   # loopback only
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    # ── GPU (optional) — needs the NVIDIA Container Toolkit on the host ──
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # One-shot: wait for Ollama, then pull the detector model and exit.
+  model-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      ANONPROXY_OLLAMA_MODEL: ${ANONPROXY_OLLAMA_MODEL:-qwen3.5:4b}
+    entrypoint: ["/bin/sh", "-c", "ollama pull \"$${ANONPROXY_OLLAMA_MODEL}\""]
+    restart: "no"
+
+volumes:
+  ollama_models:

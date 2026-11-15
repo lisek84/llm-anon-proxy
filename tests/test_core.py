@@ -1,0 +1,167 @@
+"""
+Round-trip and leak tests. These mirror the failures found in the earlier
+review of the reference project, now asserted closed.
+"""
+import os
+import tempfile
+
+import pytest
+
+# Point config at throwaway data before importing modules that read it.
+_TMP = tempfile.mkdtemp(prefix="anonproxy-test-")
+os.environ["ANONPROXY_DATA_DIR"] = _TMP
+os.environ["ANONPROXY_DB"] = os.path.join(_TMP, "t.db")
+os.environ["ANONPROXY_DICT"] = os.path.join(_TMP, "dict.yaml")
+os.environ["ANONPROXY_LEAKLOG"] = os.path.join(_TMP, "rotate.jsonl")
+os.environ["ANONPROXY_CONTEXT"] = "test"
+
+with open(os.environ["ANONPROXY_DICT"], "w") as f:
+    f.write(
+        "domains:\n  - onlyfans.com\n"
+        "hosts:\n  - of-prod-db01\n"
+        "ips:\n  - 185.12.34.56\n"
+        "usernames:\n  - of_app\n"
+        "organizations:\n  - onlyfans\n"
+        "paths:\n  - /home/lisek/onlyfans-ops\n"
+    )
+
+from pathlib import Path  # noqa: E402
+
+from anonproxy import vault, dictionary, anonymizer, surrogates  # noqa: E402
+from anonproxy.config import config  # noqa: E402
+
+
+# Capture this module's own paths now — the env vars are shared across test
+# modules and get overwritten when another module is imported.
+_MY_DB = os.environ["ANONPROXY_DB"]
+_MY_DICT = os.environ["ANONPROXY_DICT"]
+
+
+@pytest.fixture(autouse=True)
+def _ctx():
+    """Pin this module's context before every test (config is a shared singleton,
+    so another test module may have pointed it elsewhere)."""
+    config.CONTEXT_ID = "test"
+    config.DB_PATH = Path(_MY_DB)
+    config.DICT_PATH = Path(_MY_DICT)
+    config.LLM_ENABLED = False
+    vault.init()
+    dictionary.load()
+    yield
+
+
+def rt(text):
+    """Anonymize then deanonymize — should round-trip to the original."""
+    anon = anonymizer.anonymize(text, source="test")
+    return anon, anonymizer.deanonymize(anon)
+
+
+# ── Dictionary layer ──────────────────────────────────────────────────────────
+
+def test_domain_and_subdomain_roundtrip():
+    anon, back = rt("connect to cdn3.onlyfans.com and onlyfans.com")
+    assert "onlyfans.com" not in anon
+    assert "cdn3." in anon          # subdomain structure preserved
+    assert back == "connect to cdn3.onlyfans.com and onlyfans.com"
+
+
+def test_bare_brand_replaced():
+    anon, back = rt("deploy aplikacji onlyfans na prod")
+    assert "onlyfans" not in anon
+    assert back == "deploy aplikacji onlyfans na prod"
+
+
+def test_path_and_host_and_user():
+    anon, back = rt("ssh of_app@of-prod-db01:/home/lisek/onlyfans-ops")
+    for s in ("of_app", "of-prod-db01", "/home/lisek/onlyfans-ops"):
+        assert s not in anon
+    assert back == "ssh of_app@of-prod-db01:/home/lisek/onlyfans-ops"
+
+
+# ── Regex safety net (the previously-leaking cases) ───────────────────────────
+
+# Token fixtures are assembled from pieces so the committed file contains no
+# literal that matches a provider secret-scanner (these are fake, but their
+# shape is real on purpose — that is what the regex must catch).
+_GHP = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
+_SK_LIVE = "sk_" + "live_" + "51HxFAKEFAKEFAKE0123456789abcd"
+_AKIA = "AKIA" + "IOSFODNN7EXAMPLE"
+
+
+@pytest.mark.parametrize("text,secret", [
+    ("mysql -uroot -pHunter2pass -h db", "Hunter2pass"),
+    ("sshpass -p 'Zx9!kLm2' ssh root@srv", "Zx9!kLm2"),
+    ("PGPASSWORD=Pg_s3cr3t psql -h db", "Pg_s3cr3t"),
+    ("  password: Tr0ub4dor&3", "Tr0ub4dor&3"),
+    ("DATABASE_URL=postgres://app:Qw3rty99@db:5432/main", "Qw3rty99"),
+    ("Authorization: Bearer abcDEF123456ghiJKL789mnoPQR", "abcDEF123456ghiJKL789mnoPQR"),
+    ("admin:$apr1$Kq8x$J7t0Ffakehashvalue12", "$apr1$Kq8x$J7t0Ffakehashvalue12"),
+    ("requirepass r3d1sP4ss", "r3d1sP4ss"),
+    ("define( 'DB_PASSWORD', 'wpP4ss_x1' );", "wpP4ss_x1"),
+    (f"key is {_GHP}", _GHP),
+    (f"STRIPE={_SK_LIVE}", _SK_LIVE),
+])
+def test_secret_not_leaked(text, secret):
+    anon = anonymizer.anonymize(text, source="test")
+    assert secret not in anon, f"LEAK: {secret!r} survived in {anon!r}"
+
+
+def test_private_key_block():
+    pem = ("-----BEGIN OPENSSH PRIVATE KEY-----\n"
+           "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAA\n"
+           "-----END OPENSSH PRIVATE KEY-----")
+    anon = anonymizer.anonymize(pem, source="test")
+    assert "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAA" not in anon
+
+
+# ── Determinism / no collisions across "restarts" ─────────────────────────────
+
+def test_no_surrogate_collisions_many_ips():
+    originals = [f"185.12.{i}.{j}" for i in range(20) for j in range(1, 13)]
+    surs = {}
+    for ip in originals:
+        s, _ = vault.get_or_create(ip, "IP_ADDRESS", surrogates.generate)
+        surs[ip] = s
+    # Every surrogate unique, and each reverse-maps to exactly its own original.
+    assert len(set(surs.values())) == len(originals)
+    for ip, s in surs.items():
+        assert anonymizer.deanonymize(s) == ip
+
+
+def test_surrogate_stable_across_reload():
+    s1, _ = vault.get_or_create("91.200.7.7", "IP_ADDRESS", surrogates.generate)
+    vault.init()  # simulate restart
+    s2, _ = vault.get_or_create("91.200.7.7", "IP_ADDRESS", surrogates.generate)
+    assert s1 == s2
+
+
+# ── Allowlist: tooling domains/IPs stay intact ────────────────────────────────
+
+def test_outgoing_scan_flags_missed_secret_not_surrogate():
+    import json as _json
+    from anonproxy import leaklog
+    # A surrogate ghp_ token must NOT be flagged as a leak.
+    anon = anonymizer.anonymize(f"token {_GHP}", source="test")
+    assert anonymizer.scan_for_leaks(anon, "test") == 0
+    # But a raw secret embedded in otherwise-anonymized text IS flagged.
+    leaklog._seen_hashes.clear()
+    assert anonymizer.scan_for_leaks(f"leftover {_AKIA}", "test") == 1
+
+
+def test_allowlist_kept():
+    text = "pip install from pypi.org, api at api.anthropic.com, dns 8.8.8.8"
+    anon = anonymizer.anonymize(text, source="test")
+    assert "pypi.org" in anon
+    assert "anthropic.com" in anon
+    assert "8.8.8.8" in anon
+
+
+def test_llm_safe_terms_filtered():
+    # Tool/protocol/platform terms and CVEs from the LLM layer are ignored.
+    llm = [("nmap", "ORGANIZATION"), ("smb", "HOSTNAME"), ("CVE-2024-6387", "ORGANIZATION"),
+           ("kube-system", "ORGANIZATION"), ("web-prod-01", "HOSTNAME")]
+    text = "nmap smb CVE-2024-6387 kube-system web-prod-01"
+    anon = anonymizer.anonymize(text, llm_matches=llm, source="test")
+    for kept in ("nmap", "smb", "CVE-2024-6387", "kube-system"):
+        assert kept in anon
+    assert "web-prod-01" not in anon  # a real hostname is still replaced

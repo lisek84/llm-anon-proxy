@@ -1,0 +1,29 @@
+# Your private values. Everything here is replaced deterministically before
+# anything leaves the machine, and restored on the way back.
+#
+# Matching is case-insensitive and substring-based, longest first, so listing a
+# registrable domain also covers its subdomains:
+#   onlyfans.com  ->  cdn3.onlyfans.com is handled as cdn3.<surrogate>
+#
+# Keep this file private (chmod 600). It is git-ignored by default.
+
+domains:
+  - example-prod.pl
+
+hosts:
+  - of-prod-db01
+
+ips:
+  - 185.12.34.56
+
+emails:
+  - admin@example-prod.pl
+
+usernames:
+  - of_app
+
+organizations:
+  - onlyfans
+
+paths:
+  - /home/lisek/onlyfans-ops
