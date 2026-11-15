@@ -154,8 +154,10 @@ same IP maps to different surrogates in different contexts).
 
 ## Limitations
 
-* Substitution only — it cannot scrub encrypted material or values that were
-  transformed (hashed, re-encoded) after you saw them.
+* Substitution only. For **declared** values it also catches their common
+  encodings (base64/base32/hex/URL/JSON `\uXXXX`) and is Unicode-normalized
+  (NFC/NFD), so e.g. a user `Łukasz` is covered plain and encoded. It cannot
+  scrub encryption, compression, or arbitrary encodings of undeclared values.
 * Context can still identify you (paths, schema names, service layout).
 * Local transcripts in `~/.claude/projects/*.jsonl` still hold real values; the
   proxy sits downstream of them. Protect or clear them separately.

@@ -160,6 +160,39 @@ def _fake_path(original: str, attempt: int) -> str:
     return f"/opt/anon/{_rand_from(d, _LOWER, 6)}"
 
 
+_B64_ALPHABET = string.ascii_uppercase + string.ascii_lowercase + string.digits + "+/"
+
+
+def _fake_b64(original: str, attempt: int) -> str:
+    """Same length as the encoded original, base64 alphabet, padding preserved."""
+    d = _digest("B64", original, attempt)
+    pad = len(original) - len(original.rstrip("="))
+    body = _rand_from(d, _B64_ALPHABET.replace("+", "").replace("/", ""),
+                      max(1, len(original) - pad))
+    return body + ("=" * pad)
+
+
+def _fake_hex(original: str, attempt: int) -> str:
+    d = _digest("HEX", original, attempt)
+    return _rand_from(d, "0123456789abcdef", len(original))
+
+
+_B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+
+
+def _fake_b32(original: str, attempt: int) -> str:
+    d = _digest("B32", original, attempt)
+    pad = len(original) - len(original.rstrip("="))
+    body = _rand_from(d, _B32_ALPHABET, max(1, len(original) - pad))
+    return body + ("=" * pad)
+
+
+def _fake_opaque(original: str, attempt: int) -> str:
+    """Length-preserving alnum surrogate for structured encodings (url/json)."""
+    d = _digest("OPAQUE", original, attempt)
+    return _rand_from(d, _ALNUM, max(1, len(original)))
+
+
 def _is_private_ip(ip: str) -> bool:
     try:
         a, b = (int(x) for x in ip.split(".")[:2])
@@ -196,6 +229,14 @@ def generate(original: str, entity_type: str, attempt: int = 0) -> str:
         return _fake_mac(original, attempt)
     if entity_type == "PATH":
         return _fake_path(original, attempt)
+    if entity_type == "ENCODED_B64":
+        return _fake_b64(original, attempt)
+    if entity_type == "ENCODED_B32":
+        return _fake_b32(original, attempt)
+    if entity_type == "ENCODED_HEX":
+        return _fake_hex(original, attempt)
+    if entity_type in ("URL_ENCODED", "JSON_ESCAPED"):
+        return _fake_opaque(original, attempt)
     # Fallback
     d = _digest("OTHER", original, attempt)
     return f"[REDACTED_{_rand_from(d, string.ascii_uppercase, 6)}]"

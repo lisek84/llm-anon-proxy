@@ -181,8 +181,11 @@ to confirm your values are caught, start the proxy, do a short session, then
 
 ## Limitations
 
-Substitution only. It cannot scrub encrypted material or values transformed
-after you saw them (hashed, re-encoded), and context (paths, schema names,
-service layout) can still identify you. Local Claude Code transcripts in
-`~/.claude/projects/*.jsonl` still hold real values — protect or clear them
-separately.
+Substitution only. For values **in your dictionary** it also catches their
+common encodings (base64, base32, hex, URL-encoding, JSON `\uXXXX`) and matches
+them regardless of Unicode normalization (NFC/NFD) — so a user named `Łukasz` is
+covered in plain and encoded forms. It cannot scrub encrypted or compressed data,
+arbitrary encodings of values you did not declare, or context (paths, schema
+names, service layout) that identifies you indirectly. Local Claude Code
+transcripts in `~/.claude/projects/*.jsonl` still hold real values — protect or
+clear them separately. See [THREAT-MODEL.md](THREAT-MODEL.md) for the full list.

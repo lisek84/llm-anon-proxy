@@ -15,6 +15,7 @@ restored to real values before Claude Code executes them).
 """
 import logging
 import re
+import unicodedata
 
 from . import audit, dictionary, regex_detector, surrogates, vault, leaklog
 
@@ -113,6 +114,11 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
     """Replace every detected original with its surrogate."""
     if not text or not text.strip():
         return text
+
+    # Canonical Unicode form so differently-normalized input (e.g. NFD from some
+    # filesystems/JSON) still matches dictionary values stored in NFC. This is
+    # semantically identical text — safe to forward.
+    text = unicodedata.normalize("NFC", text)
 
     entities = _collect(text, llm_matches)
     if not entities:

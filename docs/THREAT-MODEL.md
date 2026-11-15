@@ -90,10 +90,39 @@ isolated; only the OS boundary actually isolates you. A same-UID agent that is
 determined and reads files before the proxy starts is out of scope — the answer
 there is a different user/container/host, which is why `enforce` insists on it.
 
+## Encodings and Unicode
+
+Plain substitution misses a value that has been re-encoded. The proxy closes the
+common keyless cases **for values you declare in the dictionary** — it also
+registers their encoded forms:
+
+* base64 (standard and url-safe, padded and unpadded, with and without the
+  trailing newline `echo` adds), base32, and hex (upper/lower);
+* URL/percent-encoding and JSON `\uXXXX` escapes.
+
+Encoded forms are matched token-bounded so a short value's encoding never
+partially matches inside a longer blob, and `KEY=<base64>` still matches. One-way
+hashes (md5/sha, standard lengths) are scrubbed by the regex HASH rule because
+their *shape* is recognized, even though the proxy cannot know which value they
+came from.
+
+Unicode is normalized to NFC on both sides, so an accented or Polish value
+(`Łukasz`, `Kraków`) matches whether the input arrived as NFC or NFD, and its
+encodings are computed from UTF-8 bytes. Declare such values exactly as they
+appear; matching is case-insensitive for plain text.
+
+Still **not** covered: encodings of a value that is *not* in the dictionary (an
+arbitrary base64 blob cannot be assumed sensitive without drowning you in false
+positives — the same limit as encryption); compression (gzip/deflate) or
+encryption; double-encoding; a value split across messages; and exotic encodings
+(HTML entities, ROT13, custom schemes). For anything you care about, put the real
+value in the dictionary.
+
 ## What this tool still does not protect against
 
-* **Encrypted or transformed data** — it substitutes literals; it cannot scrub a
-  value that was hashed, base64'd or encrypted after you saw it.
+* **Encrypted or compressed data** — it substitutes literals; it cannot scrub a
+  value that was encrypted or gzip'd after you saw it. Reversible *encodings* of
+  declared values are handled (see above); arbitrary ones are not.
 * **Context** — paths, schema names and service layout can identify you even
   with every literal replaced.
 * **Prompt injection** from tool output (a server banner telling the model to do

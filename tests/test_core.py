@@ -107,6 +107,28 @@ def test_secret_not_leaked(text, secret):
     assert secret not in anon, f"LEAK: {secret!r} survived in {anon!r}"
 
 
+def test_encoded_variants_of_dictionary_value_caught():
+    import base64
+    v = "onlyfans.com"  # in the test dictionary
+    for enc in (base64.b64encode(v.encode()).decode(),
+                base64.b64encode(v.encode()).decode().rstrip("="),
+                base64.urlsafe_b64encode(v.encode()).decode(),
+                v.encode().hex()):
+        anon, back = rt(f"data: {enc}")
+        assert enc not in anon, f"encoded form leaked: {enc!r} in {anon!r}"
+        assert back == f"data: {enc}"
+
+
+def test_encoded_boundary_no_partial_match():
+    # base64 of a longer string must not be partially scrubbed just because a
+    # shorter dictionary value's base64 is a prefix of it.
+    import base64
+    longer = base64.b64encode(b"onlyfansXYZ_not_a_domain").decode()
+    anon = anonymizer.anonymize(f"blob {longer}", source="test")
+    # It should pass through intact (not a declared value), not be half-replaced.
+    assert longer in anon
+
+
 def test_p_flag_not_matched_inside_word():
     # The -p credential rule must not fire inside "of-prod-db01".
     anon = anonymizer.anonymize("ssh of_app@of-prod-db01", source="test")
