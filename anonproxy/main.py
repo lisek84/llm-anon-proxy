@@ -97,14 +97,19 @@ async def _anon_body(body: dict) -> dict:
 # ── Response deanonymization ──────────────────────────────────────────────────
 
 def _deanon_json_response(data: dict) -> dict:
+    restored: set[str] = set()
     for block in data.get("content", []):
         t = block.get("type")
         if t == "text" and isinstance(block.get("text"), str):
-            block["text"] = anonymizer.deanonymize(block["text"])
+            block["text"], r = anonymizer.deanonymize_detailed(block["text"])
+            restored |= r
         elif t == "thinking" and isinstance(block.get("thinking"), str):
-            block["thinking"] = anonymizer.deanonymize(block["thinking"])
+            block["thinking"], r = anonymizer.deanonymize_detailed(block["thinking"])
+            restored |= r
         elif t == "tool_use":
             block["input"] = anonymizer.deanon_value(block.get("input", {}))
+    if restored:
+        log.info("← restored %d surrogate(s) in response", len(restored))
     return data
 
 
@@ -127,6 +132,7 @@ async def _stream_and_deanon(body: dict, headers: dict):
     text_buf: dict[int, str] = {}
     json_buf: dict[int, str] = {}
     block_type: dict[int, str] = {}
+    restored_all: set[str] = set()
 
     async with httpx.AsyncClient(timeout=600) as client:
         async with client.stream(
@@ -168,8 +174,10 @@ async def _stream_and_deanon(body: dict, headers: dict):
                         emit, hold = _safe_split(text_buf[idx])
                         text_buf[idx] = hold
                         if emit:
+                            restored_text, r = anonymizer.deanonymize_detailed(emit)
+                            restored_all |= r
                             out = dict(delta)
-                            out[field] = anonymizer.deanonymize(emit)
+                            out[field] = restored_text
                             yield _sse("content_block_delta",
                                        {"type": "content_block_delta", "index": idx, "delta": out})
                     elif dtype == "input_json_delta":
@@ -181,19 +189,22 @@ async def _stream_and_deanon(body: dict, headers: dict):
                 elif etype == "content_block_stop":
                     idx = evt.get("index", 0)
                     if block_type.get(idx) == "tool_use":
-                        restored = anonymizer.deanonymize(json_buf.get(idx, ""))
-                        if restored:
+                        restored_json, r = anonymizer.deanonymize_detailed(json_buf.get(idx, ""))
+                        restored_all |= r
+                        if restored_json:
                             yield _sse("content_block_delta", {
                                 "type": "content_block_delta", "index": idx,
-                                "delta": {"type": "input_json_delta", "partial_json": restored},
+                                "delta": {"type": "input_json_delta", "partial_json": restored_json},
                             })
                     else:
                         tail = text_buf.get(idx, "")
                         if tail:
                             field = "thinking" if block_type.get(idx) == "thinking" else "text"
+                            restored_tail, r = anonymizer.deanonymize_detailed(tail)
+                            restored_all |= r
                             yield _sse("content_block_delta", {
                                 "type": "content_block_delta", "index": idx,
-                                "delta": {"type": f"{field}_delta", field: anonymizer.deanonymize(tail)},
+                                "delta": {"type": f"{field}_delta", field: restored_tail},
                             })
                     text_buf.pop(idx, None)
                     json_buf.pop(idx, None)
@@ -201,6 +212,9 @@ async def _stream_and_deanon(body: dict, headers: dict):
 
                 else:
                     # message_start / ping / message_delta / message_stop / …
+                    if etype == "message_stop" and restored_all:
+                        log.info("← restored %d surrogate(s) in streamed response",
+                                 len(restored_all))
                     yield _sse(etype or "message", evt)
 
 

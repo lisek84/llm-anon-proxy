@@ -16,7 +16,7 @@ restored to real values before Claude Code executes them).
 import logging
 import re
 
-from . import dictionary, regex_detector, surrogates, vault, leaklog
+from . import audit, dictionary, regex_detector, surrogates, vault, leaklog
 
 log = logging.getLogger("anonproxy")
 
@@ -86,19 +86,23 @@ def _collect(text: str, llm_matches: list[tuple[str, str]] | None) -> dict[str, 
         entities[val] = etype
 
     # 1 (highest): dictionary always wins — your own values, correct type.
-    dict_vals: set[str] = set()
+    dict_vals: dict[str, str] = {}
     for val, etype in dictionary.detect(text):
         entities[val] = etype
-        dict_vals.add(val)
+        dict_vals[val] = etype
 
-    # If a longer detection (e.g. a regex FQDN cdn3.onlyfans.com) strictly
-    # contains a dictionary value (onlyfans.com), drop the longer one so the
-    # dictionary part is replaced in place and the surrounding structure
-    # (the cdn3. subdomain) is preserved.
+    # Subdomain preservation: if a longer detection (e.g. a regex FQDN
+    # cdn3.onlyfans.com) strictly contains a dictionary DOMAIN (onlyfans.com),
+    # drop the longer one so only the registrable part is swapped and the
+    # cdn3. subdomain structure is kept. This applies ONLY to domain values —
+    # a brand/org word that happens to sit inside a domain must NOT suppress
+    # replacing the whole FQDN.
+    preserve_structure = {"DOMAIN"}
     for key in list(entities):
         if key in dict_vals:
             continue
-        if any(d != key and d in key for d in dict_vals):
+        if any(d != key and d in key and dtype in preserve_structure
+               for d, dtype in dict_vals.items()):
             del entities[key]
 
     return entities
@@ -116,13 +120,26 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
 
     # Longest original first prevents partial/overlapping substitutions.
     result = text
+    new_count = 0
+    seen_types: dict[str, int] = {}
     for original, etype in sorted(entities.items(), key=lambda kv: len(kv[0]), reverse=True):
         if original not in result:
             continue
-        surrogate, _ = vault.get_or_create(original, etype, surrogates.generate)
+        surrogate, is_new = vault.get_or_create(original, etype, surrogates.generate)
         result = result.replace(original, surrogate)
+        seen_types[etype] = seen_types.get(etype, 0) + 1
+        if is_new:
+            new_count += 1
+            audit.record(original, surrogate, etype, source)
         if etype in leaklog.ROTATABLE:
             leaklog.record(original, etype, "intercepted", source)
+
+    if seen_types:
+        summary = " ".join(f"{t.lower()}={n}" for t, n in sorted(seen_types.items()))
+        msg = "anonymized %d value(s) [%s] (%d new): %s"
+        args = (sum(seen_types.values()), source, new_count, summary)
+        # New catches are worth seeing live; steady-state re-sends stay quiet.
+        (log.info if new_count else log.debug)(msg, *args)
 
     return result
 
@@ -144,15 +161,22 @@ def scan_for_leaks(text: str, source: str = "outgoing") -> int:
     return count
 
 
-def deanonymize(text: str) -> str:
-    """Replace every known surrogate with its original (longest surrogate first)."""
+def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
+    """Return (restored_text, set of surrogates that were actually replaced)."""
     if not text:
-        return text
+        return text, set()
     result = text
+    restored: set[str] = set()
     for surrogate, original in vault.all_reverse_mappings():
         if surrogate in result:
             result = result.replace(surrogate, original)
-    return result
+            restored.add(surrogate)
+    return result, restored
+
+
+def deanonymize(text: str) -> str:
+    """Replace every known surrogate with its original (longest surrogate first)."""
+    return deanonymize_detailed(text)[0]
 
 
 def anonymize_value(obj, llm_matches=None, source: str = ""):

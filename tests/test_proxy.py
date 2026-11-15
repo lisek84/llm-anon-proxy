@@ -101,6 +101,7 @@ def _ctx():
     config.DB_PATH = Path(_MY_DB)
     config.DICT_PATH = Path(_MY_DICT)
     config.LLM_ENABLED = False
+    config.AUDIT_ENABLED = False
     vault.init()
     dictionary.load()
     yield

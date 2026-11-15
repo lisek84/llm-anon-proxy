@@ -109,13 +109,65 @@ python -m anonproxy.rotate     # grouped report, leaked first
 
 After a day of work, walk the list and rotate each credential at its source.
 
-## Verifying it works
+## Verifying it works — where to see the trace
 
-Watch the proxy log — each request prints whether any value was replaced, and
-warns if a secret-shaped value survived into the outgoing body. For a hard
-check, run the test suite (`python -m pytest -q`), which asserts that a set of
-real-world secret patterns never survive anonymization and that responses
-round-trip exactly.
+There are four places, from live to forensic:
+
+**1. The live proxy log (stdout of `python -m anonproxy`).** Each request prints
+what happened on the way out and back:
+
+```
+anonymized 5 value(s) [tool_result] (3 new): credential=1 domain=1 hostname=1 ip_address=2
+← restored 4 surrogate(s) in streamed response
+```
+
+`(N new)` are values seen for the first time; re-sent history stays quiet. The
+`restored` line confirms the return path put your real values back. A
+`secret-shaped value still present` warning means something slipped through (it
+is also logged for rotation — see below).
+
+**2. The audit trail — the record of exactly what was caught.** Every value is
+logged the first time it is seen, `original -> surrogate`, with its type and
+where it appeared:
+
+```bash
+python -m anonproxy.audit            # full list, grouped by type
+python -m anonproxy.audit -n 20      # just the last 20
+```
+
+```
+2026-11-15T20:33:39Z  [DOMAIN    ] message      'cdn3.onlyfans.com' -> 'xzrbxf-ulpor.example'
+2026-11-15T20:33:39Z  [CREDENTIAL] tool_result  'Hunter2pass'       -> '[CRED_J9724CV11M]'
+```
+
+This file (`data/audit.log.jsonl`) holds **real values**, so it lives in the
+protected data dir (`0600`) and is never served over HTTP. It is the answer to
+"what did the proxy actually catch in this session." Disable with
+`ANONPROXY_AUDIT=false`.
+
+**3. A dry run before you trust it — offline, sends nothing.** Paste or pipe a
+real file and see precisely what would leave the machine:
+
+```bash
+python -m anonproxy.preview < .env
+python -m anonproxy.preview --file /etc/nginx/conf.d/app.conf --llm
+```
+
+It prints every catch (`original -> surrogate`) and the fully anonymized text,
+in a throwaway context that never touches your real vault or logs. Use it to
+confirm your `dictionary.yaml` and the regex rules catch your data *before* a
+real session.
+
+**4. The test suite — a hard guarantee.**
+
+```bash
+python -m pytest -q    # asserts known secret patterns never survive, responses round-trip
+```
+
+Typical first real session: run `python -m anonproxy.preview < some-real-config`
+to confirm your values are caught, start the proxy, do a short session, then
+`python -m anonproxy.audit` to see the full list of what was intercepted and
+`python -m anonproxy.rotate` for anything to rotate.
 
 ## Troubleshooting
 

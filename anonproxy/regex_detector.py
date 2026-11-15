@@ -52,9 +52,11 @@ _add("CREDENTIAL",
 _add("CREDENTIAL",
      r"(?i)define\(\s*['\"][A-Z_]*(?:PASS|SECRET|KEY|SALT)[A-Z_]*['\"]\s*,\s*"
      r"(?P<v>'[^']+'|\"[^\"]+\")", "v")
-# CLI -p<value> / -p <value> / --password <value>
+# CLI -p<value> / -p <value> / --password <value>. The flag must be a real
+# token (start of string or preceded by whitespace), so it never fires inside a
+# word like "of-prod-db01".
 _add("CREDENTIAL",
-     r"(?i)(?:--password|--pass|-p)[=\s]?(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
+     r"(?i)(?<!\S)(?:--password|--pass|-p)[=\s]?(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
 # redis requirepass
 _add("CREDENTIAL", r"(?i)\brequirepass\s+(?P<v>'[^']+'|\"[^\"]+\"|\S+)", "v")
 # sshpass -p

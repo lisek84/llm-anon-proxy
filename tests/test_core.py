@@ -45,6 +45,7 @@ def _ctx():
     config.DB_PATH = Path(_MY_DB)
     config.DICT_PATH = Path(_MY_DICT)
     config.LLM_ENABLED = False
+    config.AUDIT_ENABLED = False
     vault.init()
     dictionary.load()
     yield
@@ -104,6 +105,13 @@ _AKIA = "AKIA" + "IOSFODNN7EXAMPLE"
 def test_secret_not_leaked(text, secret):
     anon = anonymizer.anonymize(text, source="test")
     assert secret not in anon, f"LEAK: {secret!r} survived in {anon!r}"
+
+
+def test_p_flag_not_matched_inside_word():
+    # The -p credential rule must not fire inside "of-prod-db01".
+    anon = anonymizer.anonymize("ssh of_app@of-prod-db01", source="test")
+    assert "[CRED_" not in anon
+    assert "of-prod-db01" not in anon  # still replaced as a hostname
 
 
 def test_private_key_block():

@@ -107,6 +107,17 @@ can never be routed to the wrong host. Shapes are preserved: public IPs →
 `198.18.0.0/15`, private IPs stay private, domains keep sub-labels, tokens keep
 their recognizable prefix and length class.
 
+## Seeing what it caught
+
+```bash
+python -m anonproxy.audit         # every value caught: original -> surrogate, type, where
+python -m anonproxy.preview < .env  # offline dry run — what WOULD leave the machine
+python -m anonproxy.rotate        # secret-shaped values to rotate
+```
+
+The proxy also logs each request live (`anonymized N … (M new)` out,
+`restored N` back). Full detail: [docs/USAGE.md](docs/USAGE.md#verifying-it-works--where-to-see-the-trace).
+
 ## Rotation log
 
 Every secret-shaped value seen is appended to `data/rotate.log.jsonl` (`0600`,
@@ -115,11 +126,12 @@ type + masked preview + SHA-256 only, never the full value):
 * `intercepted` — replaced before sending; rotate as a precaution.
 * `leaked` — found in the bytes actually sent upstream; **rotate these**.
 
-Review after a session:
-
 ```bash
 python -m anonproxy.rotate
 ```
+
+The audit trail `data/audit.log.jsonl` (`0600`) holds the real
+`original -> surrogate` pairs — it is sensitive and never served over HTTP.
 
 ## Per-client isolation
 
@@ -136,7 +148,9 @@ same IP maps to different surrogates in different contexts).
 | `ANONPROXY_DICT` | `dictionary.yaml` | your values |
 | `ANONPROXY_LLM` | `false` | enable the Ollama layer |
 | `ANONPROXY_OLLAMA_MODEL` | `qwen3.5:4b` | model id |
-| `ANONPROXY_DATA_DIR` | `./data` | db, secret key, rotation log |
+| `ANONPROXY_DATA_DIR` | `./data` | db, secret key, rotation + audit logs |
+| `ANONPROXY_AUDIT` | `true` | write the `original -> surrogate` audit trail |
+| `ANONPROXY_ISOLATION` | `warn` | `warn` / `enforce` / `off` (see THREAT-MODEL) |
 
 ## Limitations
 

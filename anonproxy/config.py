@@ -54,6 +54,15 @@ class Config:
     # that user cannot read the proxy's secret files.
     CLIENT_USER: str = os.getenv("ANONPROXY_CLIENT_USER", "")
 
+    # ── Audit trail ───────────────────────────────────────────────────────────
+    # A time-ordered record of every value caught (first time it is seen):
+    # original -> surrogate, with type and where it appeared. It contains real
+    # values, so it lives in the protected data dir (0600) alongside the vault
+    # and is NEVER exposed over HTTP. This is the trace you review to confirm the
+    # proxy is actually catching your data.
+    AUDIT_ENABLED: bool = os.getenv("ANONPROXY_AUDIT", "true").lower() == "true"
+    AUDIT_PATH = Path(os.getenv("ANONPROXY_AUDIT_PATH", str(DATA_DIR / "audit.log.jsonl")))
+
     def __init__(self) -> None:
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
