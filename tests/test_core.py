@@ -182,6 +182,30 @@ def test_person_surrogate_has_no_whitespace():
     assert anonymizer.deanonymize(s) == "Jan Kowalski"
 
 
+def test_ip_not_matched_inside_oid():
+    # SNMP OIDs and long dotted-number runs must not yield a bogus IP.
+    text = "sysUpTime .1.3.6.1.2.1.1.3.0 = 12345"
+    anon = anonymizer.anonymize(text, source="test")
+    assert anon == text  # nothing replaced
+
+
+def test_cctld_two_label_domain_fully_caught():
+    anon, back = rt("relay smtp.discoinfinito.com.br now")
+    assert "discoinfinito" not in anon and ".com.br" not in anon
+    assert back == "relay smtp.discoinfinito.com.br now"
+
+
+def test_broad_cctld_domain_caught():
+    anon = anonymizer.anonymize("see mail.correos.es please", source="test")
+    assert "correos.es" not in anon
+
+
+def test_code_tokens_not_treated_as_domains():
+    text = "log.info('x'); import socket.io; self.app.run()"
+    anon = anonymizer.anonymize(text, source="test")
+    assert "log.info" in anon and "socket.io" in anon and "self.app" in anon
+
+
 def test_p_flag_not_matched_inside_word():
     # The -p credential rule must not fire inside "of-prod-db01".
     anon = anonymizer.anonymize("ssh of_app@of-prod-db01", source="test")

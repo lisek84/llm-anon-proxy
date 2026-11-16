@@ -75,14 +75,39 @@ _add("HASH", r"\b[0-9a-fA-F]{32}:[0-9a-fA-F]{32}\b")
 
 # ── Network identifiers ───────────────────────────────────────────────────────
 _add("MAC_ADDRESS", r"\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b")
-_add("CIDR", r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)/\d{1,2}\b")
-_add("IP_ADDRESS", r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b")
+# The (?<![\d.]) / (?![\d.]) guards stop a 4-group IP from matching inside a
+# longer dotted-number run — SNMP OIDs (.1.3.6.1.2.1…) and some version strings.
+_IP = r"(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)"
+_add("CIDR", rf"(?<![\d.]){_IP}/\d{{1,2}}(?!\d)")
+_add("IP_ADDRESS", rf"(?<![\d.]){_IP}(?![\d.])")
 
 # ── Email + domains ───────────────────────────────────────────────────────────
 _add("EMAIL", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+
+# Known TLDs/suffixes. A curated-but-broad list (not a fully generic [a-z]{2,},
+# which would match code like obj.method) — covers common gTLDs, ccTLDs and the
+# usual two-label ccTLDs (.com.br, .co.uk) because the last label (br, uk) is
+# here and the leading labels are consumed by (?:label\.)+.
+_TLDS = (
+    "com net org io dev app co info biz cloud xyz me ai so sh gg tv "
+    "edu gov mil int eu asia "
+    "pl de uk fr it es nl be at ch cz sk hu ro bg gr pt ie dk se no fi is "
+    "ru ua by lt lv ee md "
+    "us ca mx br ar cl pe uy "
+    "cn jp kr in id my sg th vn ph hk tw au nz "
+    "za ng ke ma eg "
+    "local internal lan intra home corp test example"
+).split()
 _add("DOMAIN",
      r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+"
-     r"(?:com|net|org|io|dev|app|pl|eu|uk|de|co|info|biz|local|internal|lan|cloud|xyz|me)\b")
+     r"(?:" + "|".join(_TLDS) + r")\b(?!\()")   # (?!\() skips calls like log.info(
+
+# Tokens that look like a domain but are code, not infrastructure — never flagged.
+_DOMAIN_CODE_DENYLIST = {
+    "socket.io", "log.info", "log.debug", "log.error", "log.warn", "console.log",
+    "self.app", "settings.local", "os.path", "string.format", "self.config",
+    "this.app", "process.env",
+}
 
 # IPs we never anonymize (loopback / well-known resolvers / metadata / unspecified).
 _IP_ALLOWLIST = {
@@ -108,6 +133,8 @@ def detect(text: str) -> list[tuple[str, str]]:
                 continue
             if etype == "DOMAIN":
                 low = val.lower().rstrip(".")
+                if low in _DOMAIN_CODE_DENYLIST:
+                    continue
                 if low in _DOMAIN_ALLOWLIST or any(
                     low == d or low.endswith("." + d) for d in _DOMAIN_ALLOWLIST
                 ):
