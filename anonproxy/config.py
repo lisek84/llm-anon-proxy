@@ -51,6 +51,17 @@ class Config:
     # carry it as a URL path prefix: ANTHROPIC_BASE_URL=http://host:8787/<token>.
     TOKEN: str = os.getenv("ANONPROXY_TOKEN", "")
 
+    # ── TLS (for remote connections — never send this over plain HTTP) ────────
+    # Provide your own cert/key, or set ANONPROXY_TLS=true to auto-generate a
+    # self-signed pair into the data dir. Clients then use https:// and must
+    # trust the cert (NODE_EXTRA_CA_CERTS for Claude Code). For production,
+    # terminating TLS at nginx/haproxy in front of the proxy is also fine.
+    TLS: bool = os.getenv("ANONPROXY_TLS", "false").lower() == "true"
+    TLS_CERT: str = os.getenv("ANONPROXY_TLS_CERT", "")
+    TLS_KEY: str = os.getenv("ANONPROXY_TLS_KEY", "")
+    # Host names / IPs to put in the self-signed cert's SAN (comma-separated).
+    TLS_SAN: str = os.getenv("ANONPROXY_TLS_SAN", "")
+
     # ── Isolation from the Claude Code agent ──────────────────────────────────
     # The vault, dictionary and secret key together are a full de-anonymization
     # oracle. If the agent can read them, the tool is pointless. The proxy must

@@ -222,6 +222,9 @@ Szczegóły i konsekwencje: [docs/USAGE.pl.md](docs/USAGE.pl.md).
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | blokuj (503) żądania z blokami image/binarny document zamiast je przekazywać |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | blokuj (403) endpointy inne niż `/v1/messages[/count_tokens]` |
 | `ANONPROXY_TOKEN` | _(nieustawione)_ | wymagaj tego sekretu jako prefiksu ścieżki (`…:8787/<token>`); do użycia poza loopbackiem |
+| `ANONPROXY_TLS` | `false` | serwuj HTTPS z auto-generowanym certem self-signed (katalog danych) |
+| `ANONPROXY_TLS_CERT` / `ANONPROXY_TLS_KEY` | _(nieustawione)_ | serwuj HTTPS z własnym certem/kluczem |
+| `ANONPROXY_TLS_SAN` | _(nieustawione)_ | dodatkowe nazwy hostów/IP do certu self-signed (po przecinku) |
 
 ## Ograniczenia
 

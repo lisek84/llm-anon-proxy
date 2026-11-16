@@ -100,3 +100,39 @@ async def test_llm_http_error_is_unavailable(monkeypatch):
     monkeypatch.setattr(llm_detector.httpx, "AsyncClient", _Client)
     with pytest.raises(llm_detector.LLMUnavailable):
         await llm_detector.detect("some text with an entity DC01 here")
+
+
+# ── TLS cert resolution ───────────────────────────────────────────────────────
+
+def test_tls_off_returns_none():
+    from anonproxy import tls
+    config.TLS = False
+    config.TLS_CERT = config.TLS_KEY = ""
+    assert tls.resolve() == (None, None)
+
+
+def test_tls_self_signed_generated(tmp_path):
+    import stat as _stat
+    from anonproxy import tls
+    config.TLS = True
+    config.TLS_CERT = config.TLS_KEY = ""
+    config.DATA_DIR = tmp_path
+    config.TLS_SAN = "proxy.test,10.0.0.9"
+    cert, key = tls.resolve()
+    assert os.path.exists(cert) and os.path.exists(key)
+    assert _stat.S_IMODE(os.stat(key).st_mode) == 0o600
+    data = open(cert, "rb").read()
+    assert b"BEGIN CERTIFICATE" in data
+    # reused on next call (no regeneration)
+    assert tls.resolve() == (cert, key)
+    config.TLS = False
+    config.DATA_DIR = Path(_MY_DB).parent
+
+
+def test_tls_explicit_cert_paths_passthrough():
+    from anonproxy import tls
+    config.TLS = False
+    config.TLS_CERT = "/x/c.pem"
+    config.TLS_KEY = "/x/k.pem"
+    assert tls.resolve() == ("/x/c.pem", "/x/k.pem")
+    config.TLS_CERT = config.TLS_KEY = ""

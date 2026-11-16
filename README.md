@@ -217,6 +217,9 @@ Details and consequences: [docs/USAGE.md](docs/USAGE.md#mappings-persist--cleari
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | block (503) requests with image/binary-document blocks instead of forwarding |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | block (403) endpoints other than `/v1/messages[/count_tokens]` |
 | `ANONPROXY_TOKEN` | _(unset)_ | require this secret as a URL path prefix (`…:8787/<token>`); for non-loopback use |
+| `ANONPROXY_TLS` | `false` | serve HTTPS with an auto-generated self-signed cert (data dir) |
+| `ANONPROXY_TLS_CERT` / `ANONPROXY_TLS_KEY` | _(unset)_ | serve HTTPS with your own cert/key instead |
+| `ANONPROXY_TLS_SAN` | _(unset)_ | extra host names/IPs for the self-signed cert (comma-separated) |
 
 ## Limitations
 

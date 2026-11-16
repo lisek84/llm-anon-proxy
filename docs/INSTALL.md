@@ -138,6 +138,53 @@ export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 claude
 ```
 
+## Remote use — encrypt the connection (TLS)
+
+The proxy serves **plain HTTP** by default, which is fine only on `127.0.0.1`.
+If you run it on one machine and point other hosts at it
+(`ANTHROPIC_BASE_URL=…`), the traffic — your real data on the way back — must not
+cross the network unencrypted. Three options:
+
+**1. Built-in self-signed TLS** (quickest):
+
+```bash
+ANONPROXY_TLS=true ANONPROXY_HOST=0.0.0.0 ANONPROXY_TLS_SAN=proxy.mylan \
+  ANONPROXY_TOKEN=$(openssl rand -hex 24) python -m anonproxy
+```
+
+It generates `data/tls-cert.pem` / `tls-key.pem` (reused on restart). Clients use
+`https://`. Claude Code (Node) rejects an untrusted cert, so on each client point
+Node at the cert:
+
+```bash
+export NODE_EXTRA_CA_CERTS=/path/to/tls-cert.pem
+export ANTHROPIC_BASE_URL=https://proxy.mylan:8787/<token>
+claude
+```
+
+**2. Your own cert** (e.g. an internal CA or Let's Encrypt): set
+`ANONPROXY_TLS_CERT` and `ANONPROXY_TLS_KEY` instead — then clients need no
+`NODE_EXTRA_CA_CERTS`.
+
+**3. Terminate TLS at a reverse proxy** (recommended for production): run this
+proxy on loopback and put nginx / haproxy / Caddy in front with a real
+certificate, forwarding to `127.0.0.1:8787`. Example nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name proxy.mylan;
+    ssl_certificate     /etc/letsencrypt/live/proxy.mylan/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/proxy.mylan/privkey.pem;
+    location / { proxy_pass http://127.0.0.1:8787; proxy_buffering off; }
+}
+```
+
+In every remote case also set `ANONPROXY_TOKEN` (a URL path-prefix secret) and a
+firewall rule — the proxy has no per-user auth of its own. And remember the
+isolation rule still applies: the box running the proxy holds the vault, so keep
+its `data/` unreadable by anyone who could also reach Claude Code's files.
+
 ## Verify
 
 ```bash

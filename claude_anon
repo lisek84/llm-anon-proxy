@@ -9,9 +9,16 @@ set -euo pipefail
 
 HOST="${ANONPROXY_HOST:-127.0.0.1}"
 PORT="${ANONPROXY_PORT:-8787}"
-BASE="${ANTHROPIC_BASE_URL:-http://${HOST}:${PORT}}"
+# http by default; https if the proxy serves TLS (set ANONPROXY_TLS=true there)
+SCHEME="http"
+if [ "${ANONPROXY_TLS:-false}" = "true" ] || [ -n "${ANONPROXY_TLS_CERT:-}" ]; then
+    SCHEME="https"
+fi
+BASE="${ANTHROPIC_BASE_URL:-${SCHEME}://${HOST}:${PORT}}"
 
-if ! curl -fsS --max-time 2 "${BASE}/health" >/dev/null 2>&1; then
+# -k so the health check works with a self-signed cert; the real client (claude)
+# must trust the cert separately — see docs (NODE_EXTRA_CA_CERTS).
+if ! curl -fsSk --max-time 2 "${BASE}/health" >/dev/null 2>&1; then
     echo "anonproxy is not reachable at ${BASE}" >&2
     echo "Start it first in another window:  ./start_proxy.sh" >&2
     exit 1

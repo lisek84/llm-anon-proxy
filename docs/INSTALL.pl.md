@@ -140,6 +140,54 @@ export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 claude
 ```
 
+## Użycie zdalne — szyfruj połączenie (TLS)
+
+Proxy domyślnie serwuje **gołe HTTP**, co jest OK tylko na `127.0.0.1`. Jeśli
+uruchamiasz je na jednej maszynie i kierujesz na nie inne hosty
+(`ANTHROPIC_BASE_URL=…`), ruch — w tym Twoje prawdziwe dane w drodze powrotnej —
+nie może iść po sieci nieszyfrowany. Trzy opcje:
+
+**1. Wbudowany TLS self-signed** (najszybciej):
+
+```bash
+ANONPROXY_TLS=true ANONPROXY_HOST=0.0.0.0 ANONPROXY_TLS_SAN=proxy.mojlan \
+  ANONPROXY_TOKEN=$(openssl rand -hex 24) python -m anonproxy
+```
+
+Generuje `data/tls-cert.pem` / `tls-key.pem` (reużywane po restarcie). Klienci
+używają `https://`. Claude Code (Node) odrzuca niezaufany cert, więc na każdym
+kliencie wskaż Node na ten cert:
+
+```bash
+export NODE_EXTRA_CA_CERTS=/ścieżka/do/tls-cert.pem
+export ANTHROPIC_BASE_URL=https://proxy.mojlan:8787/<token>
+claude
+```
+
+**2. Własny cert** (wewnętrzne CA lub Let's Encrypt): ustaw zamiast tego
+`ANONPROXY_TLS_CERT` i `ANONPROXY_TLS_KEY` — wtedy klienci nie potrzebują
+`NODE_EXTRA_CA_CERTS`.
+
+**3. Terminacja TLS na reverse proxy** (zalecane produkcyjnie): uruchom to proxy
+na loopbacku, a przed nim postaw nginx / haproxy / Caddy z prawdziwym
+certyfikatem, przekazując do `127.0.0.1:8787`. Przykład nginx:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name proxy.mojlan;
+    ssl_certificate     /etc/letsencrypt/live/proxy.mojlan/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/proxy.mojlan/privkey.pem;
+    location / { proxy_pass http://127.0.0.1:8787; proxy_buffering off; }
+}
+```
+
+W każdym wariancie zdalnym ustaw też `ANONPROXY_TOKEN` (sekret w prefiksie ścieżki)
+i regułę firewalla — proxy nie ma własnego uwierzytelniania per-użytkownik. I
+pamiętaj, że zasada izolacji nadal obowiązuje: maszyna z proxy trzyma vault, więc
+`data/` ma być nieczytelne dla kogokolwiek, kto mógłby sięgnąć też do plików
+Claude Code.
+
 ## Weryfikacja
 
 ```bash
