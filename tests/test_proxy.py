@@ -34,7 +34,7 @@ os.environ["ANONPROXY_UPSTREAM"] = f"http://127.0.0.1:{_UP_PORT}"
 os.environ["ANONPROXY_LLM"] = "false"
 
 with open(os.environ["ANONPROXY_DICT"], "w") as f:
-    f.write("domains:\n  - onlyfans.com\nhosts:\n  - of-prod-db01\nips:\n  - 185.12.34.56\n")
+    f.write("domains:\n  - example.com\nhosts:\n  - of-prod-db01\nips:\n  - 185.12.34.56\n")
 
 from anonproxy import vault, dictionary, anonymizer, surrogates  # noqa: E402
 from anonproxy.config import config  # noqa: E402
@@ -129,12 +129,12 @@ async def test_request_anonymized_and_response_restored():
         "system": "cwd is /x",
         "messages": [
             {"role": "user", "content": [
-                {"type": "text", "text": "zaloguj sie na of-prod-db01 (185.12.34.56) dla onlyfans.com"}]},
+                {"type": "text", "text": "zaloguj sie na of-prod-db01 (185.12.34.56) dla example.com"}]},
             {"role": "assistant", "content": [
                 {"type": "tool_use", "id": "p1", "name": "Bash",
                  "input": {"command": "ssh root@185.12.34.56 # of-prod-db01"}}]},
             {"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": "p1", "content": "app at onlyfans.com up"}]},
+                {"type": "tool_result", "tool_use_id": "p1", "content": "app at example.com up"}]},
         ],
     }
     transport = httpx.ASGITransport(app=app)
@@ -158,7 +158,7 @@ async def test_request_anonymized_and_response_restored():
 
     # 1) Upstream never saw the real secrets.
     sent = _received["body"]
-    for secret in ("185.12.34.56", "of-prod-db01", "onlyfans.com"):
+    for secret in ("185.12.34.56", "of-prod-db01", "example.com"):
         assert secret not in sent, f"LEAK upstream: {secret}"
     assert "198.1" in sent  # surrogate IP shape present
 

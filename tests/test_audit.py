@@ -12,7 +12,7 @@ os.environ["ANONPROXY_DB"] = os.path.join(_TMP, "t.db")
 os.environ["ANONPROXY_DICT"] = os.path.join(_TMP, "dict.yaml")
 
 with open(os.environ["ANONPROXY_DICT"], "w") as f:
-    f.write("domains:\n  - onlyfans.com\n")
+    f.write("domains:\n  - example.com\n")
 
 from anonproxy import vault, dictionary, anonymizer, audit  # noqa: E402
 from anonproxy.config import config  # noqa: E402
@@ -36,13 +36,13 @@ def _ctx():
 
 
 def test_audit_records_new_catch_once():
-    anonymizer.anonymize("deploy onlyfans.com and 185.12.34.56", source="message")
+    anonymizer.anonymize("deploy example.com and 185.12.34.56", source="message")
     # Second time: same values are cached, so no new audit rows.
-    anonymizer.anonymize("again onlyfans.com and 185.12.34.56", source="tool_result")
+    anonymizer.anonymize("again example.com and 185.12.34.56", source="tool_result")
 
     entries = audit.read_all("audittest")
     originals = {e["original"] for e in entries}
-    assert "onlyfans.com" in originals
+    assert "example.com" in originals
     assert "185.12.34.56" in originals
     # Each distinct value recorded exactly once (new mappings only).
     assert len(entries) == len(originals)

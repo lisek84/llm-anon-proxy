@@ -10,7 +10,7 @@ A surrogate is derived from HMAC(secret, context|type|original|attempt), so:
 Shapes are preserved so the model still reasons usefully and so restored
 output stays valid:
   * domains keep their sub-labels; only the registrable part is swapped
-    (cdn3.onlyfans.com -> cdn3.aqurel-vous.example)
+    (cdn3.example.com -> cdn3.aqurel-vous.example)
   * public IPs -> 198.18.0.0/15 (RFC 2544 benchmark range, non-routable)
   * private IPs stay private (10.x), preserving the public/internal distinction
   * credentials/tokens keep their length class

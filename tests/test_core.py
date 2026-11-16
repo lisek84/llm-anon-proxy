@@ -17,12 +17,12 @@ os.environ["ANONPROXY_CONTEXT"] = "test"
 
 with open(os.environ["ANONPROXY_DICT"], "w") as f:
     f.write(
-        "domains:\n  - onlyfans.com\n"
+        "domains:\n  - example.com\n"
         "hosts:\n  - of-prod-db01\n"
         "ips:\n  - 185.12.34.56\n"
         "usernames:\n  - of_app\n"
-        "organizations:\n  - onlyfans\n"
-        "paths:\n  - /home/lisek/onlyfans-ops\n"
+        "organizations:\n  - example\n"
+        "paths:\n  - /home/lisek/example-ops\n"
     )
 
 from pathlib import Path  # noqa: E402
@@ -60,23 +60,23 @@ def rt(text):
 # ── Dictionary layer ──────────────────────────────────────────────────────────
 
 def test_domain_and_subdomain_roundtrip():
-    anon, back = rt("connect to cdn3.onlyfans.com and onlyfans.com")
-    assert "onlyfans.com" not in anon
+    anon, back = rt("connect to cdn3.example.com and example.com")
+    assert "example.com" not in anon
     assert "cdn3." in anon          # subdomain structure preserved
-    assert back == "connect to cdn3.onlyfans.com and onlyfans.com"
+    assert back == "connect to cdn3.example.com and example.com"
 
 
 def test_bare_brand_replaced():
-    anon, back = rt("deploy aplikacji onlyfans na prod")
-    assert "onlyfans" not in anon
-    assert back == "deploy aplikacji onlyfans na prod"
+    anon, back = rt("deploy aplikacji example na prod")
+    assert "example" not in anon
+    assert back == "deploy aplikacji example na prod"
 
 
 def test_path_and_host_and_user():
-    anon, back = rt("ssh of_app@of-prod-db01:/home/lisek/onlyfans-ops")
-    for s in ("of_app", "of-prod-db01", "/home/lisek/onlyfans-ops"):
+    anon, back = rt("ssh of_app@of-prod-db01:/home/lisek/example-ops")
+    for s in ("of_app", "of-prod-db01", "/home/lisek/example-ops"):
         assert s not in anon
-    assert back == "ssh of_app@of-prod-db01:/home/lisek/onlyfans-ops"
+    assert back == "ssh of_app@of-prod-db01:/home/lisek/example-ops"
 
 
 # ── Regex safety net (the previously-leaking cases) ───────────────────────────
@@ -109,7 +109,7 @@ def test_secret_not_leaked(text, secret):
 
 def test_encoded_variants_of_dictionary_value_caught():
     import base64
-    v = "onlyfans.com"  # in the test dictionary
+    v = "example.com"  # in the test dictionary
     for enc in (base64.b64encode(v.encode()).decode(),
                 base64.b64encode(v.encode()).decode().rstrip("="),
                 base64.urlsafe_b64encode(v.encode()).decode(),
@@ -123,10 +123,20 @@ def test_encoded_boundary_no_partial_match():
     # base64 of a longer string must not be partially scrubbed just because a
     # shorter dictionary value's base64 is a prefix of it.
     import base64
-    longer = base64.b64encode(b"onlyfansXYZ_not_a_domain").decode()
+    longer = base64.b64encode(b"exampleXYZ_not_a_domain").decode()
     anon = anonymizer.anonymize(f"blob {longer}", source="test")
     # It should pass through intact (not a declared value), not be half-replaced.
     assert longer in anon
+
+
+def test_bare_term_not_matched_inside_fresh_surrogate():
+    # A bare dictionary word ("example") must not match inside a domain surrogate
+    # just inserted (whose TLD is ".example"). Replacement is position-based over
+    # the original text, so the round-trip must be exact.
+    text = "/srv/example and https://cdn3.example.com/x"
+    anon, back = rt(text)
+    assert "example.com" not in anon
+    assert back == text  # surrogate TLD intact; nothing double-replaced
 
 
 def test_p_flag_not_matched_inside_word():

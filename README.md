@@ -12,7 +12,7 @@ the machine, and restores the real values in the response — including inside
 
 ```
 you / ssh / files ─► Claude Code ─► [this proxy] ─► api.anthropic.com
-                                       │  onlyfans.com      → aqurel-vous.example
+                                       │  example.com      → aqurel-vous.example
                                        │  185.12.34.56      → 198.18.x.x
                                        │  Sup3rS3cret!      → [CRED_XXXXXXXXXX]
                                        ▼

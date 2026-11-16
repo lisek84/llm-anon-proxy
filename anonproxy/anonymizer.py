@@ -93,7 +93,7 @@ def _collect(text: str, llm_matches: list[tuple[str, str]] | None) -> dict[str, 
         dict_vals[val] = etype
 
     # Subdomain preservation: if a longer detection (e.g. a regex FQDN
-    # cdn3.onlyfans.com) strictly contains a dictionary DOMAIN (onlyfans.com),
+    # cdn3.example.com) strictly contains a dictionary DOMAIN (example.com),
     # drop the longer one so only the registrable part is swapped and the
     # cdn3. subdomain structure is kept. This applies ONLY to domain values —
     # a brand/org word that happens to sit inside a domain must NOT suppress
@@ -124,15 +124,37 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
     if not entities:
         return text
 
-    # Longest original first prevents partial/overlapping substitutions.
-    result = text
+    # Position-based replacement over the ORIGINAL text, in a single pass, so a
+    # surrogate just inserted is never re-scanned (e.g. a keyword "example" must
+    # not match inside a domain surrogate's ".example" TLD). Overlapping matches
+    # are resolved longest-first.
+    spans: list[tuple[int, int, str, str]] = []  # (start, end, original, etype)
+    for original, etype in entities.items():
+        start = 0
+        while True:
+            i = text.find(original, start)
+            if i < 0:
+                break
+            spans.append((i, i + len(original), original, etype))
+            start = i + len(original)
+
+    # Accept non-overlapping spans, preferring the longest.
+    accepted: list[tuple[int, int, str, str]] = []
+    for span in sorted(spans, key=lambda s: s[1] - s[0], reverse=True):
+        s0, s1, _, _ = span
+        if all(s1 <= a0 or s0 >= a1 for a0, a1, _, _ in accepted):
+            accepted.append(span)
+    accepted.sort(key=lambda s: s[0])
+
+    # Resolve surrogates once per distinct original (first use records it).
     new_count = 0
     seen_types: dict[str, int] = {}
-    for original, etype in sorted(entities.items(), key=lambda kv: len(kv[0]), reverse=True):
-        if original not in result:
+    surrogate_of: dict[str, str] = {}
+    for _, _, original, etype in accepted:
+        if original in surrogate_of:
             continue
         surrogate, is_new = vault.get_or_create(original, etype, surrogates.generate)
-        result = result.replace(original, surrogate)
+        surrogate_of[original] = surrogate
         seen_types[etype] = seen_types.get(etype, 0) + 1
         if is_new:
             new_count += 1
@@ -140,6 +162,16 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
             events.emit_catch(source, etype, original, surrogate)
         if etype in leaklog.ROTATABLE:
             leaklog.record(original, etype, "intercepted", source)
+
+    # Stitch the output from the original text and the accepted spans.
+    out_parts: list[str] = []
+    cursor = 0
+    for s0, s1, original, _ in accepted:
+        out_parts.append(text[cursor:s0])
+        out_parts.append(surrogate_of[original])
+        cursor = s1
+    out_parts.append(text[cursor:])
+    result = "".join(out_parts)
 
     if seen_types:
         summary = " ".join(f"{t.lower()}={n}" for t, n in sorted(seen_types.items()))

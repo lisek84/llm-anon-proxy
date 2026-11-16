@@ -7,7 +7,7 @@ Runs in a throwaway context, so it never touches your real vault or logs.
 
     python -m anonproxy.preview < .env
     python -m anonproxy.preview --file /etc/nginx/conf.d/app.conf
-    echo "ssh root@185.12.34.56 for onlyfans.com" | python -m anonproxy.preview
+    echo "ssh root@185.12.34.56 for example.com" | python -m anonproxy.preview
     python -m anonproxy.preview --llm < notes.txt      # also use the Ollama layer
 """
 import asyncio

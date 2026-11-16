@@ -41,9 +41,9 @@ _SECTION_TYPES = {
     "tokens": "TOKEN",
     "credentials": "CREDENTIAL",
     # A bare brand/project word to catch wherever it appears as a component:
-    # /var/www/onlyfans, onlyfans.conf, sites-enabled/onlyfans, etc. Matched as
+    # /var/www/example, example.conf, sites-enabled/example, etc. Matched as
     # a substring; because longer dictionary/regex values win first (longest
-    # match first), a full domain like onlyfans.com is still handled as a domain.
+    # match first), a full domain like example.com is still handled as a domain.
     "keywords": "KEYWORD",
     "other": "OTHER",
 }
@@ -141,7 +141,7 @@ def load(path: Path | None = None) -> None:
                 _entries.append((etype, enc))
                 seen.add(enc)
 
-    # Longest literals first so e.g. onlyfans.com wins over onlyfans.
+    # Longest literals first so e.g. example.com wins over example.
     _entries.sort(key=lambda e: len(e[1]), reverse=True)
 
     plain = [lit for t, lit in _entries if t not in _BOUNDARIED_TYPES]

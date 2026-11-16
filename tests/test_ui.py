@@ -11,7 +11,7 @@ os.environ["ANONPROXY_DATA_DIR"] = _TMP
 os.environ["ANONPROXY_DB"] = os.path.join(_TMP, "t.db")
 os.environ["ANONPROXY_DICT"] = os.path.join(_TMP, "dict.yaml")
 with open(os.environ["ANONPROXY_DICT"], "w") as f:
-    f.write("keywords:\n  - onlyfans\n")
+    f.write("keywords:\n  - example\n")
 
 from anonproxy import events, webui, vault, dictionary  # noqa: E402
 from anonproxy.config import config  # noqa: E402

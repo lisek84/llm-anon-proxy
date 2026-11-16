@@ -43,17 +43,17 @@ emails:
 usernames:
   - of_app
 organizations: # brand / project / company names, incl. bare words
-  - onlyfans
+  - example
 keywords:       # bare words caught as a component anywhere:
-  - onlyfans     #   /var/www/onlyfans, onlyfans.conf, onlyfans-worker
+  - example     #   /var/www/example, example.conf, example-worker
 paths:          # sensitive absolute paths
-  - /home/lisek/onlyfans-ops
+  - /home/lisek/example-ops
 ```
 
 `keywords` are matched as substrings wherever they appear, so a project name
 embedded in a path or filename is caught. A longer value still wins first, so
-listing both `keywords: onlyfans` and `domains: onlyfans.com` keeps a full domain
-handled as a domain (`cdn3.onlyfans.com`) while a bare `/var/www/onlyfans` uses
+listing both `keywords: example` and `domains: example.com` keeps a full domain
+handled as a domain (`cdn3.example.com`) while a bare `/var/www/example` uses
 the keyword surrogate.
 
 What to put here: the high-value things a scan cannot infer — brand/project
@@ -144,7 +144,7 @@ python -m anonproxy.audit -n 20      # just the last 20
 ```
 
 ```
-2026-11-15T20:33:39Z  [DOMAIN    ] message      'cdn3.onlyfans.com' -> 'xzrbxf-ulpor.example'
+2026-11-15T20:33:39Z  [DOMAIN    ] message      'cdn3.example.com' -> 'xzrbxf-ulpor.example'
 2026-11-15T20:33:39Z  [CREDENTIAL] tool_result  'Hunter2pass'       -> '[CRED_J9724CV11M]'
 ```
 
