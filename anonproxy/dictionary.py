@@ -15,6 +15,22 @@ from pathlib import Path
 
 from .config import config
 
+try:
+    import ahocorasick  # optional; ~100x faster scan of thousands of literals
+    _HAVE_AC = True
+except ImportError:  # pragma: no cover - falls back to the regex scanners
+    _HAVE_AC = False
+
+
+def _fold(s: str) -> str:
+    """Length-preserving lowercase (so match offsets still index the original).
+    A char whose lowercase is a single char is folded; anything else is kept."""
+    out = []
+    for c in s:
+        lc = c.lower()
+        out.append(lc if len(lc) == 1 else c)
+    return "".join(out)
+
 # Encoded forms of a dictionary value shorter than this are not registered, to
 # avoid matching trivial strings that merely look like an encoding.
 _MIN_ENCODED_LEN = 8
@@ -52,6 +68,15 @@ _SECTION_TYPES = {
 _entries: list[tuple[str, str]] = []
 _scanner: re.Pattern | None = None            # plain literals, substring match
 _enc_scanner: re.Pattern | None = None        # encoded literals, token-bounded
+_plain_types: dict[str, str] = {}             # _fold(lit) -> type (O(1) lookup)
+_enc_types: dict[str, str] = {}               # lit -> type (case-sensitive)
+_plain_auto = None                            # Aho-Corasick over folded text
+_enc_auto = None                              # Aho-Corasick over raw text
+_ready: bool = False                          # True once load() has run
+load_generation: int = 0                      # bumped on every (re)load; caches key on it
+
+_ENC_PRE_SET = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/_-")
+_ENC_POST_SET = _ENC_PRE_SET | {"="}
 
 # An encoded literal is only a real hit when it is not glued to more encoding
 # characters, so a shorter encoding never partially matches inside a longer one.
@@ -119,7 +144,10 @@ def _encoded_variants(value: str) -> list[tuple[str, str]]:
 
 def load(path: Path | None = None) -> None:
     """(Re)load the dictionary and rebuild the scanner."""
-    global _entries, _scanner, _enc_scanner
+    global _entries, _scanner, _enc_scanner, _plain_types, _enc_types, load_generation
+    global _plain_auto, _enc_auto, _ready
+    load_generation += 1
+    _ready = True
     p = path or config.DICT_PATH
     _entries = []
     base_values: list[str] = []
@@ -147,45 +175,88 @@ def load(path: Path | None = None) -> None:
     plain = [lit for t, lit in _entries if t not in _BOUNDARIED_TYPES]
     encoded = [lit for t, lit in _entries if t in _BOUNDARIED_TYPES]
 
-    # Plain values match as substrings (so a domain covers its subdomains);
-    # case-insensitive. Encoded values must be token-bounded and are
-    # case-sensitive (base64/hex are case-significant).
-    _scanner = re.compile("|".join(re.escape(x) for x in plain), re.IGNORECASE) if plain else None
-    _enc_scanner = (
-        re.compile(f"(?<!{_ENC_PRE})(?:" + "|".join(re.escape(x) for x in encoded)
-                   + f")(?!{_ENC_POST})")
-        if encoded else None
-    )
+    # O(1) type lookups (first declaration of a given literal wins).
+    _plain_types = {}
+    for t, lit in _entries:
+        if t not in _BOUNDARIED_TYPES:
+            _plain_types.setdefault(_fold(lit), t)
+    _enc_types = {lit: t for t, lit in _entries if t in _BOUNDARIED_TYPES}
+
+    _plain_auto = _enc_auto = None
+    _scanner = _enc_scanner = None
+    if _HAVE_AC:
+        # Aho-Corasick: plain over folded text, encoded over raw text.
+        if plain:
+            _plain_auto = ahocorasick.Automaton()
+            for lit in plain:
+                fl = _fold(lit)
+                _plain_auto.add_word(fl, (len(fl), fl))
+            _plain_auto.make_automaton()
+        if encoded:
+            _enc_auto = ahocorasick.Automaton()
+            for lit in encoded:
+                _enc_auto.add_word(lit, (len(lit), lit))
+            _enc_auto.make_automaton()
+    else:
+        # Regex fallback. Plain is substring + case-insensitive; encoded is
+        # token-bounded and case-sensitive.
+        _scanner = re.compile("|".join(re.escape(x) for x in plain), re.IGNORECASE) if plain else None
+        _enc_scanner = (
+            re.compile(f"(?<!{_ENC_PRE})(?:" + "|".join(re.escape(x) for x in encoded)
+                       + f")(?!{_ENC_POST})")
+            if encoded else None
+        )
 
 
-def _type_for(literal_lower: str) -> str:
-    for etype, lit in _entries:
-        if lit.lower() == literal_lower:
-            return etype
-    return "OTHER"
+def _type_for(matched: str) -> str:
+    return _plain_types.get(_fold(matched), "OTHER")
 
 
 def _type_for_exact(literal: str) -> str:
-    for etype, lit in _entries:
-        if lit == literal:
-            return etype
-    return "ENCODED_B64"
+    return _enc_types.get(literal, "ENCODED_B64")
+
+
+def _enc_bounded(text: str, start: int, end: int) -> bool:
+    """True if text[start:end+1] is not glued to more encoding characters."""
+    if start > 0 and text[start - 1] in _ENC_PRE_SET:
+        return False
+    if end + 1 < len(text) and text[end + 1] in _ENC_POST_SET:
+        return False
+    return True
 
 
 def detect(text: str) -> list[tuple[str, str]]:
-    """Return (matched_text, entity_type) for every dictionary hit in text."""
-    if _scanner is None and _enc_scanner is None:
+    """Return distinct (matched_text, entity_type) for every dictionary hit."""
+    if not _ready:
         load()
     if not text:
         return []
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
+
+    if _plain_auto is not None or _enc_auto is not None:
+        if _plain_auto is not None:
+            folded = _fold(text)
+            for end, (length, fl) in _plain_auto.iter(folded):
+                matched = text[end - length + 1:end + 1]      # original case
+                if matched not in seen:
+                    seen.add(matched)
+                    out.append((matched, _plain_types.get(fl, "OTHER")))
+        if _enc_auto is not None:
+            for end, (length, lit) in _enc_auto.iter(text):
+                start = end - length + 1
+                if lit not in seen and _enc_bounded(text, start, end):
+                    seen.add(lit)
+                    out.append((lit, _enc_types.get(lit, "ENCODED_B64")))
+        return out
+
+    # Regex fallback
     if _scanner is not None:
         for m in _scanner.finditer(text):
             matched = m.group(0)
             if matched not in seen:
                 seen.add(matched)
-                out.append((matched, _type_for(matched.lower())))
+                out.append((matched, _type_for(matched)))
     if _enc_scanner is not None:
         for m in _enc_scanner.finditer(text):
             matched = m.group(0)

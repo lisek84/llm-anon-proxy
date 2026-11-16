@@ -44,6 +44,12 @@ def _load_secret() -> bytes:
     return _secret
 
 
+def secret_fingerprint() -> str:
+    """Short, non-reversible fingerprint of the current secret key. Changes when
+    the key is rotated, so caches that depend on surrogate values can key on it."""
+    return hashlib.sha256(b"fp\x00" + _load_secret()).hexdigest()[:16]
+
+
 def _digest(entity_type: str, original: str, attempt: int) -> bytes:
     msg = f"{config.CONTEXT_ID}\x00{entity_type}\x00{original}\x00{attempt}".encode()
     return hmac.new(_load_secret(), msg, hashlib.sha256).digest()

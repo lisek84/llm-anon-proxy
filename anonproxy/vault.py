@@ -16,6 +16,7 @@ from .config import config
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
+generation: int = 0  # bumped on init()/reset() so caches can invalidate
 
 
 def _connect(db_path: Path | None = None) -> sqlite3.Connection:
@@ -45,11 +46,12 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
 
 
 def init(db_path: Path | None = None) -> None:
-    global _conn
+    global _conn, generation
     with _lock:
         if _conn is not None:
             _conn.close()
         _conn = _connect(db_path)
+        generation += 1
 
 
 def _c() -> sqlite3.Connection:
@@ -68,7 +70,9 @@ def reset(context: str | None = None) -> int:
     the same originals would map to the same surrogates again. To also change the
     surrogate values, rotate the secret key (see anonproxy.reset).
     """
+    global generation
     with _lock:
+        generation += 1
         conn = _c()
         if context is None:
             n = conn.execute("SELECT COUNT(*) FROM mappings").fetchone()[0]

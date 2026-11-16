@@ -13,13 +13,59 @@ Deanonymization replaces every known surrogate with its original, longest
 surrogate first, over arbitrary JSON-ish structures (so tool_use inputs are
 restored to real values before Claude Code executes them).
 """
+import bisect
+import hashlib
 import logging
 import re
 import unicodedata
+from collections import OrderedDict
 
 from . import audit, dictionary, events, regex_detector, surrogates, vault, leaklog
+from .config import config
 
 log = logging.getLogger("anonproxy")
+
+# ── Per-block LRU cache ───────────────────────────────────────────────────────
+# Claude Code resends the whole conversation history every turn, so the same
+# blocks are anonymized again and again. The transformation is deterministic
+# given (context, dictionary, secret key), so we cache text -> anonymized text.
+# The key folds in the dictionary generation and the secret fingerprint, so a
+# dictionary reload or key rotation invalidates it automatically.
+_CACHE_MAX = 4096
+_cache: "OrderedDict[str, str]" = OrderedDict()
+
+
+def _cache_key(text: str, source: str) -> str:
+    h = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
+    return (f"{config.CONTEXT_ID}|{dictionary.load_generation}|{vault.generation}|"
+            f"{surrogates.secret_fingerprint()}|{source}|{h}")
+
+
+def clear_cache() -> None:
+    _cache.clear()
+
+
+def _resolve_spans(spans: list[tuple]) -> list[tuple]:
+    """Pick non-overlapping spans, longest first, returned sorted by start.
+
+    Each span is (start, end, …). Accepted spans stay disjoint and sorted, so an
+    overlap check only has to look at the two neighbours found by bisect — O(n log
+    n) instead of the O(n²) all-pairs scan.
+    """
+    starts: list[int] = []
+    ends: list[int] = []
+    accepted: list[tuple] = []
+    for span in sorted(spans, key=lambda s: s[1] - s[0], reverse=True):
+        s0, s1 = span[0], span[1]
+        i = bisect.bisect_right(starts, s0)
+        if i > 0 and ends[i - 1] > s0:        # overlaps the interval on the left
+            continue
+        if i < len(starts) and starts[i] < s1:  # overlaps the interval on the right
+            continue
+        starts.insert(i, s0)
+        ends.insert(i, s1)
+        accepted.insert(i, span)
+    return accepted
 
 # LLM-sourced matches are filtered against these (regex/dictionary are trusted).
 # Tool names, protocols, platform terms and generic labels the model sometimes
@@ -123,9 +169,27 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
     # semantically identical text — safe to forward.
     text = unicodedata.normalize("NFC", text)
 
+    # Cache repeated blocks (resent history). Only when the LLM layer did not
+    # contribute matches, so the result depends solely on (text, dict, key).
+    use_cache = not llm_matches
+    if use_cache:
+        ck = _cache_key(text, source)
+        hit = _cache.get(ck)
+        if hit is not None:
+            _cache.move_to_end(ck)
+            return hit
+
+    def _store(result: str) -> str:
+        if use_cache:
+            _cache[ck] = result
+            _cache.move_to_end(ck)
+            if len(_cache) > _CACHE_MAX:
+                _cache.popitem(last=False)
+        return result
+
     entities = _collect(text, llm_matches)
     if not entities:
-        return text
+        return _store(text)
 
     # Position-based replacement over the ORIGINAL text, in a single pass, so a
     # surrogate just inserted is never re-scanned (e.g. a keyword "example" must
@@ -141,13 +205,8 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
             spans.append((i, i + len(original), original, etype))
             start = i + len(original)
 
-    # Accept non-overlapping spans, preferring the longest.
-    accepted: list[tuple[int, int, str, str]] = []
-    for span in sorted(spans, key=lambda s: s[1] - s[0], reverse=True):
-        s0, s1, _, _ = span
-        if all(s1 <= a0 or s0 >= a1 for a0, a1, _, _ in accepted):
-            accepted.append(span)
-    accepted.sort(key=lambda s: s[0])
+    # Accept non-overlapping spans, preferring the longest (sorted by start).
+    accepted = _resolve_spans(spans)
 
     # Resolve surrogates once per distinct original (first use records it).
     new_count = 0
@@ -188,7 +247,7 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
         # New catches are worth seeing live; steady-state re-sends stay quiet.
         (log.info if new_count else log.debug)(msg, *args)
 
-    return result
+    return _store(result)
 
 
 # Only high-confidence, rotation-worthy secrets are recorded as "leaked".
@@ -271,12 +330,7 @@ def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
             spans.append((i, i + len(surrogate), original))
             start = i + len(surrogate)
 
-    accepted: list[tuple[int, int, str]] = []
-    for span in sorted(spans, key=lambda s: s[1] - s[0], reverse=True):
-        s0, s1, _ = span
-        if all(s1 <= a0 or s0 >= a1 for a0, a1, _ in accepted):
-            accepted.append(span)
-    accepted.sort(key=lambda s: s[0])
+    accepted = _resolve_spans(spans)
 
     out: list[str] = []
     cursor = 0
