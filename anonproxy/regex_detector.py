@@ -75,32 +75,52 @@ _add("HASH", r"\b[0-9a-fA-F]{32}:[0-9a-fA-F]{32}\b")
 
 # ── Network identifiers ───────────────────────────────────────────────────────
 _add("MAC_ADDRESS", r"\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b")
-# The (?<![\d.]) / (?![\d.]) guards stop a 4-group IP from matching inside a
-# longer dotted-number run — SNMP OIDs (.1.3.6.1.2.1…) and some version strings.
+# Guards reject only a digit, or a digit+dot, on each side — so the address is
+# not a slice of a longer dotted-number run (SNMP OIDs), yet a trailing '.' (end
+# of sentence) or '.label' (PTR name) is fine and the IP is still caught.
+# (?<![vV]) drops v4.14.5.1-style version strings.
 _IP = r"(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)"
-_add("CIDR", rf"(?<![\d.]){_IP}/\d{{1,2}}(?!\d)")
-_add("IP_ADDRESS", rf"(?<![\d.]){_IP}(?![\d.])")
+_IP_PRE = r"(?<!\d)(?<!\d\.)(?<![vV])"
+_IP_POST = r"(?!\d)(?!\.\d)"
+_add("CIDR", rf"{_IP_PRE}{_IP}/\d{{1,2}}(?!\d)")
+_add("IP_ADDRESS", rf"{_IP_PRE}{_IP}{_IP_POST}")
 
 # ── Email + domains ───────────────────────────────────────────────────────────
 _add("EMAIL", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
-# Known TLDs/suffixes. A curated-but-broad list (not a fully generic [a-z]{2,},
-# which would match code like obj.method) — covers common gTLDs, ccTLDs and the
-# usual two-label ccTLDs (.com.br, .co.uk) because the last label (br, uk) is
-# here and the leading labels are consumed by (?:label\.)+.
-_TLDS = (
-    "com net org io dev app co info biz cloud xyz me ai so sh gg tv "
-    "edu gov mil int eu asia "
-    "pl de uk fr it es nl be at ch cz sk hu ro bg gr pt ie dk se no fi is "
-    "ru ua by lt lv ee md "
+# "Strong" TLDs: unlikely to collide with a file extension or a code field, so a
+# plain two-label domain (foo.com) is caught directly.
+_STRONG_TLDS = (
+    "com net org biz cloud xyz gg edu gov mil int eu asia "
+    "pl de uk fr nl be ch cz sk hu ro bg gr pt ie dk se fi "
+    "ru ua by lt lv ee "
     "us ca mx br ar cl pe uy "
-    "cn jp kr in id my sg th vn ph hk tw au nz "
-    "za ng ke ma eg "
-    "local internal lan intra home corp test example"
+    "cn jp kr sg th vn ph hk tw au nz za ke ma eg "
+    "local internal lan intra home corp"
 ).split()
-_add("DOMAIN",
-     r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+"
-     r"(?:" + "|".join(_TLDS) + r")\b(?!\()")   # (?!\() skips calls like log.info(
+# "Ambiguous" TLDs that double as file extensions or code attributes
+# (README.md, deploy.sh, user.id, obj.app, socket.io). These are only treated as
+# a domain with >=3 labels (api.x.ai) or in a clear network context (after @ or
+# ://, or with a trailing :port or /path). Your own such domains go in the dict.
+_AMBIG_TLDS = (
+    "md sh so in ai tv it at id my ng me is no es io app dev info co"
+).split()
+
+_LBL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_STRONG = "|".join(_STRONG_TLDS)
+_AMBIG = "|".join(_AMBIG_TLDS)
+_NOCALL = r"(?!\s*\()"   # skip function calls:  logger.info ("x")
+
+_add("DOMAIN", rf"(?i)\b(?:{_LBL}\.)+(?:{_STRONG})\b{_NOCALL}")
+_add("DOMAIN", rf"(?i)\b(?:{_LBL}\.){{2,}}(?:{_AMBIG})\b{_NOCALL}")      # >=3 labels
+_add("DOMAIN", rf"(?i)\b(?:{_LBL}\.)+(?:{_AMBIG})(?=[:/])")              # trailing :port / /path
+_add("DOMAIN", rf"(?i)(?<=@)(?:{_LBL}\.)+(?:{_AMBIG})\b{_NOCALL}")       # user@host
+_add("DOMAIN", rf"(?i)(?<=//)(?:{_LBL}\.)+(?:{_AMBIG})\b{_NOCALL}")      # proto://host
+
+# A DSN password@host (proto://user:pass@host) makes the EMAIL rule greedily
+# match "pass@host" — detect that so the password is handled by the
+# credentials-in-URL rule and the host is left to the DOMAIN rule.
+_DSN_BEFORE = re.compile(r"://[^/\s:]+:$")
 
 # Tokens that look like a domain but are code, not infrastructure — never flagged.
 _DOMAIN_CODE_DENYLIST = {
@@ -135,9 +155,12 @@ def detect(text: str) -> list[tuple[str, str]]:
             val = m.group(group) if group != 0 else m.group(0)
             if not val:
                 continue
+            mstart = m.start(group) if group != 0 else m.start()
             val = val.strip().strip("'\"")
             if not val:
                 continue
+            if etype == "EMAIL" and _DSN_BEFORE.search(text[:mstart]):
+                continue  # "pass@host" in a DSN — not an email
             if etype == "IP_ADDRESS" and (val in _IP_ALLOWLIST or val in _USER_ALLOW):
                 continue
             if etype == "DOMAIN":

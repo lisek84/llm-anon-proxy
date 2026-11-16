@@ -15,6 +15,7 @@ import logging
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from . import anonymizer, dictionary, events, leaklog, llm_detector, preflight, vault, webui
 from .config import config
@@ -336,9 +337,13 @@ async def messages(request: Request) -> Response:
                             status_code=resp.status_code,
                             headers=hdrs,
                             media_type=resp.headers.get("content-type", "application/json"))
+        async def _close():  # belt-and-suspenders if the generator never ran
+            await resp.aclose()
+            await client.aclose()
         return StreamingResponse(_stream_and_deanon(resp, client, model),
                                  status_code=200, headers=_resp_headers(resp),
-                                 media_type="text/event-stream")
+                                 media_type="text/event-stream",
+                                 background=BackgroundTask(_close))
 
     async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(f"{config.UPSTREAM_URL}/v1/messages", json=body, headers=headers)

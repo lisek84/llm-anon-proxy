@@ -191,9 +191,9 @@ def test_user_allowlist_keeps_domain():
     from anonproxy import regex_detector
     regex_detector.set_user_allow(["hetzner.com"])
     try:
-        found = {v for v, _ in regex_detector.detect("use hetzner.com and othercorp.io")}
+        found = {v for v, _ in regex_detector.detect("use hetzner.com and othercorp.com")}
         assert "hetzner.com" not in found
-        assert "othercorp.io" in found
+        assert "othercorp.com" in found
     finally:
         regex_detector.set_user_allow([])
 
@@ -220,6 +220,50 @@ def test_code_tokens_not_treated_as_domains():
     text = "log.info('x'); import socket.io; self.app.run()"
     anon = anonymizer.anonymize(text, source="test")
     assert "log.info" in anon and "socket.io" in anon and "self.app" in anon
+
+
+@pytest.mark.parametrize("text,ip", [
+    ("Blocked scanner 52.90.38.71.", "52.90.38.71"),
+    ("ip=52.90.38.71.", "52.90.38.71"),
+    ("Connect to 5.6.7.8. Done", "5.6.7.8"),
+])
+def test_ip_with_trailing_dot_still_caught(text, ip):
+    # N1 regression: a '.' right after the IP must not suppress it.
+    assert ip not in anonymizer.anonymize(text, source="test")
+
+
+def test_ptr_ip_caught_even_with_provider_allowlisted():
+    from anonproxy import regex_detector
+    regex_detector.set_user_allow(["leaseweb.net"])
+    try:
+        anon = anonymizer.anonymize("PTR 37.48.100.252.leaseweb.net", source="test")
+        assert "37.48.100.252" not in anon      # IP in the PTR name is scrubbed
+        assert "leaseweb.net" in anon           # the allowlisted provider stays
+    finally:
+        regex_detector.set_user_allow([])
+
+
+def test_filenames_and_code_fields_not_domains():
+    # N2 regression: ambiguous TLDs must not swallow file names / code attributes.
+    for tok in ("README.md", "deploy.sh", "libssl.so", "user.id", "obj.app",
+                "req.id", "notes.ai", "file.it", "x.es", "self.me"):
+        anon = anonymizer.anonymize(f"touch {tok} here", source="test")
+        assert tok in anon, f"{tok} wrongly anonymized -> {anon}"
+
+
+def test_ambiguous_tld_caught_with_three_labels_or_netctx():
+    # …but a real domain on an ambiguous TLD is still caught with 3 labels or ctx.
+    assert "api.service.ai" not in anonymizer.anonymize("call api.service.ai now", source="test")
+    assert "db.corp.io" not in anonymizer.anonymize("mysql://db.corp.io:3306/x", source="test")
+
+
+def test_dsn_password_is_credential_not_email():
+    # N3: proto://user:pass@host — password is a CREDENTIAL, host keeps subdomain.
+    text = "DATABASE_URL=https://admin:S3cr3tPASS@db.bigfirm.com/x"
+    anon = anonymizer.anonymize(text, source="test")
+    assert "S3cr3tPASS" not in anon        # password gone
+    assert "db.bigfirm.com" not in anon    # host anonymized
+    assert "[CRED_" in anon                # password handled as a credential
 
 
 def test_p_flag_not_matched_inside_word():
