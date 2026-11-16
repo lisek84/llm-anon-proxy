@@ -1,5 +1,7 @@
 # Threat model
 
+**English** · [Polski](THREAT-MODEL.pl.md)
+
 ## The core assumption
 
 This tool only works if the thing it is hiding data *from* cannot read the data

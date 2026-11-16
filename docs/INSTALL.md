@@ -1,5 +1,7 @@
 # Installation
 
+**English** · [Polski](INSTALL.pl.md)
+
 Two ways to run it: **Docker** (turnkey, best on a machine with Docker) or
 **native** (what WSL uses, since Docker isn't available there). Pick one. Nothing
 here starts a public service — the proxy binds to `127.0.0.1` only.
@@ -140,6 +142,6 @@ claude
 
 ```bash
 curl -s http://127.0.0.1:8787/health          # {"status":"ok",...}
-python -m pytest -q                            # 45 passing
+python -m pytest -q                            # 54 passing
 python scripts/dev/bench_llm.py qwen3.5:4b     # LLM layer score (needs Ollama)
 ```

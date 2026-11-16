@@ -1,5 +1,7 @@
 # Usage
 
+**English** · [Polski](USAGE.pl.md)
+
 ## The daily workflow
 
 ```bash

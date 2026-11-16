@@ -34,7 +34,7 @@ odczyta je swoimi narzędziami plikowymi i odwróci wszystko; żaden kod nie
 powstrzyma czytelnika o tym samym UID. **Uruchamiaj proxy jako inny użytkownik
 systemu / w kontenerze / w osobnej dystrybucji WSL / na innym hoście**, żeby
 Claude Code sięgał do niego wyłącznie przez port. Preflight przy starcie tego
-pilnuje — zobacz **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)**.
+pilnuje — zobacz **[docs/THREAT-MODEL.pl.md](docs/THREAT-MODEL.pl.md)**.
 
 ```bash
 export ANONPROXY_CLIENT_USER=<użytkownik-uruchamiający-claude-code>
@@ -50,10 +50,10 @@ przywracane w drodze z powrotem.
 
 ## Dokumentacja
 
-* **[docs/INSTALL.md](docs/INSTALL.md)** — instalacja przez Docker (gotowiec) i natywna, plus warstwa Ollama.
-* **[docs/USAGE.md](docs/USAGE.md)** — codzienny workflow, słownik, konteksty,
+* **[docs/INSTALL.pl.md](docs/INSTALL.pl.md)** — instalacja przez Docker (gotowiec) i natywna, plus warstwa Ollama.
+* **[docs/USAGE.pl.md](docs/USAGE.pl.md)** — codzienny workflow, słownik, konteksty,
   rejestr rotacji, weryfikacja, rozwiązywanie problemów.
-* **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)** — dlaczego proxy musi być
+* **[docs/THREAT-MODEL.pl.md](docs/THREAT-MODEL.pl.md)** — dlaczego proxy musi być
   odizolowane od agenta, jak je wdrożyć i przed czym nie chroni.
 
 ## Instalacja
@@ -113,7 +113,7 @@ Twoje poświadczenia API przechodzą wprost do Anthropic i nigdy nie są logowan
    `define('DB_PASSWORD', …)`, `requirepass`, DSN `user:pass@host`, `Bearer …`).
 3. **Lokalny LLM (opcjonalny, domyślnie wyłączony)** — kontekstowe nazwy hostów /
    organizacji / osób, których regex nie złapie. Korzysta z Twojej lokalnej
-   Ollamy (Docker lub natywnie — zobacz [docs/INSTALL.md](docs/INSTALL.md)):
+   Ollamy (Docker lub natywnie — zobacz [docs/INSTALL.pl.md](docs/INSTALL.pl.md)):
 
    ```bash
    export ANONPROXY_LLM=true
@@ -145,7 +145,7 @@ python -m anonproxy.rotate        # wartości o kształcie sekretów do rotacji
 ```
 
 Proxy loguje też każde żądanie na żywo (`anonymized N … (M new)` w stronę API,
-`restored N` z powrotem). Szczegóły: [docs/USAGE.md](docs/USAGE.md#verifying-it-works--where-to-see-the-trace).
+`restored N` z powrotem). Szczegóły: [docs/USAGE.pl.md](docs/USAGE.pl.md).
 
 ### Dashboard na żywo
 
@@ -201,7 +201,7 @@ ANONPROXY_RESET=new-key ./start_proxy.sh   # zapomnij mapowania + rotacja klucza
 ANONPROXY_RESET=all     ./start_proxy.sh   # mapowania + klucz + logi
 ```
 
-Szczegóły i konsekwencje: [docs/USAGE.md](docs/USAGE.md#mappings-persist--clearing-and-rotating).
+Szczegóły i konsekwencje: [docs/USAGE.pl.md](docs/USAGE.pl.md).
 
 ## Konfiguracja (zmienne środowiskowe)
 
