@@ -115,6 +115,15 @@ _IP_ALLOWLIST = {
     "8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "::1",
 }
 
+# User-configurable allowlist (the dictionary's `allow:` section). Public
+# services the model should keep seeing (hetzner.com, docker.io, grafana.com…).
+_USER_ALLOW: set[str] = set()
+
+
+def set_user_allow(values) -> None:
+    global _USER_ALLOW
+    _USER_ALLOW = {v.lower().rstrip(".") for v in values if v}
+
 
 def detect(text: str) -> list[tuple[str, str]]:
     if not text:
@@ -129,7 +138,7 @@ def detect(text: str) -> list[tuple[str, str]]:
             val = val.strip().strip("'\"")
             if not val:
                 continue
-            if etype == "IP_ADDRESS" and val in _IP_ALLOWLIST:
+            if etype == "IP_ADDRESS" and (val in _IP_ALLOWLIST or val in _USER_ALLOW):
                 continue
             if etype == "DOMAIN":
                 low = val.lower().rstrip(".")
@@ -137,6 +146,10 @@ def detect(text: str) -> list[tuple[str, str]]:
                     continue
                 if low in _DOMAIN_ALLOWLIST or any(
                     low == d or low.endswith("." + d) for d in _DOMAIN_ALLOWLIST
+                ):
+                    continue
+                if low in _USER_ALLOW or any(
+                    low == d or low.endswith("." + d) for d in _USER_ALLOW
                 ):
                     continue
             key = (val, etype)

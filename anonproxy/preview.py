@@ -63,7 +63,9 @@ def _main() -> int:
 
     pairs = []
     for original in sorted(entities, key=len, reverse=True):
-        sur = vault.lookup_surrogate(original) or "(unchanged)"
+        # A value with no own surrogate was detected but subsumed by a longer
+        # overlapping match (e.g. a domain inside an email) — say so clearly.
+        sur = vault.lookup_surrogate(original) or "(covered by a longer match)"
         pairs.append((entities[original], original, sur))
 
     print(f"Caught {len(pairs)} value(s):\n")

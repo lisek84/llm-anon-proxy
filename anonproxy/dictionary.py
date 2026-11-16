@@ -8,12 +8,16 @@ surrogate has the right shape.
 """
 import base64
 import json
+import logging
 import re
 import unicodedata
 import urllib.parse
 from pathlib import Path
 
+from . import regex_detector
 from .config import config
+
+log = logging.getLogger("anonproxy.dictionary")
 
 try:
     import ahocorasick  # optional; ~100x faster scan of thousands of literals
@@ -87,12 +91,27 @@ _ENC_PRE = r"[A-Za-z0-9+/_-]"
 _ENC_POST = r"[A-Za-z0-9+/=_-]"
 
 
+def _strip_comment(line: str) -> str:
+    """Remove a trailing ' #…' comment, but not a '#' inside quotes or glued to a
+    value (so a password like pa#ss or "a # b" survives)."""
+    in_q = None
+    for i, c in enumerate(line):
+        if in_q:
+            if c == in_q:
+                in_q = None
+        elif c in "\"'":
+            in_q = c
+        elif c == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
 def _parse_minimal_yaml(text: str) -> dict[str, list[str]]:
     """Parse exactly the shape:  key:\n  - value\n  - value"""
     result: dict[str, list[str]] = {}
     current: str | None = None
     for raw in text.splitlines():
-        line = raw.split("#", 1)[0].rstrip()
+        line = _strip_comment(raw).rstrip()
         if not line.strip():
             continue
         if not line.startswith((" ", "\t", "-")) and line.endswith(":"):
@@ -151,15 +170,25 @@ def load(path: Path | None = None) -> None:
     p = path or config.DICT_PATH
     _entries = []
     base_values: list[str] = []
+    allow_values: list[str] = []
     if p.exists() and p.is_file():  # is_file guards a bind-mount that made a dir
         data = _parse_minimal_yaml(p.read_text(encoding="utf-8"))
         for section, values in data.items():
+            if section == "allow":
+                allow_values = [v.strip() for v in values if v.strip()]
+                continue
+            if section not in _SECTION_TYPES:
+                log.warning("dictionary: unknown section %r — treating its values as "
+                            "generic (did you mean one of %s?)",
+                            section, ", ".join(sorted(_SECTION_TYPES)))
             etype = _SECTION_TYPES.get(section, "OTHER")
             for v in values:
                 v = _nfc(v.strip())  # canonical Unicode form (so NFD input matches)
                 if v:
                     _entries.append((etype, v))
                     base_values.append(v)
+    # User allowlist: domains/IPs the regex layer should leave intact.
+    regex_detector.set_user_allow(allow_values)
 
     # Also catch common reversible encodings of each declared value.
     seen = {lit for _, lit in _entries}

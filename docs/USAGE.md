@@ -84,8 +84,15 @@ crypt/htpasswd hashes; and assignment-style secrets (`password:`,
 
 Left intact on purpose: loopback and well-known IPs (`127.0.0.1`, `8.8.8.8`,
 `169.254.169.254`…), and tooling domains (`anthropic.com`, `github.com`,
-`pypi.org`…) — so advice and package references still work. Edit the allowlists
-in `anonproxy/regex_detector.py` if yours differ.
+`pypi.org`…) — so advice and package references still work. Add your own public
+services (so the model keeps context) via an `allow:` section in the dictionary:
+
+```yaml
+allow:            # never anonymized — domains (incl. subdomains) and IPs
+  - hetzner.com
+  - docker.io
+  - grafana.com
+```
 
 With the LLM layer on, bare hostnames and org/person names in prose are caught
 too; tool names, protocols, versions and CVE IDs are filtered out

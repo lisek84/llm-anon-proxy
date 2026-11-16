@@ -81,8 +81,9 @@ def _fake_domain(original: str, attempt: int) -> str:
 
 
 def _fake_hostname(original: str, attempt: int) -> str:
+    # 6 alphanumerics (~2 billion values) so collisions stay rare with many hosts.
     d = _digest("HOSTNAME", original, attempt)
-    return "host-" + _rand_from(d, string.digits, 4)
+    return "host-" + _rand_from(d, string.ascii_lowercase + string.digits, 6)
 
 
 def _fake_ipv4(original: str, attempt: int, private: bool) -> str:

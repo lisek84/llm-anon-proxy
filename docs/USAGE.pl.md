@@ -86,8 +86,15 @@ crypt/htpasswd; oraz sekrety w postaci przypisań (`password:`, `PGPASSWORD=`,
 
 Celowo nietknięte: loopback i dobrze znane IP (`127.0.0.1`, `8.8.8.8`,
 `169.254.169.254`…) oraz domeny narzędziowe (`anthropic.com`, `github.com`,
-`pypi.org`…) — żeby porady i odwołania do pakietów nadal działały. Edytuj listy
-dozwolonych w `anonproxy/regex_detector.py`, jeśli Twoje są inne.
+`pypi.org`…) — żeby porady i odwołania do pakietów nadal działały. Własne usługi
+publiczne (żeby model zachował kontekst) dodaj w sekcji `allow:` w słowniku:
+
+```yaml
+allow:            # nigdy nie anonimizowane — domeny (też subdomeny) i IP
+  - hetzner.com
+  - docker.io
+  - grafana.com
+```
 
 Przy włączonej warstwie LLM łapane są też nagie nazwy hostów oraz nazwy
 organizacji/osób w tekście; nazwy narzędzi, protokoły, wersje i identyfikatory CVE

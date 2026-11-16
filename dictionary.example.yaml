@@ -33,3 +33,11 @@ keywords:
 
 paths:
   - /home/lisek/example-ops
+
+# Domains / IPs the proxy should NEVER anonymize, so the model keeps useful
+# context (public services, package/registry hosts, docs). Covers subdomains.
+allow:
+  - hetzner.com
+  - docker.io
+  - grafana.com
+  - wordpress.org

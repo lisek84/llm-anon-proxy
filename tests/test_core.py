@@ -182,6 +182,22 @@ def test_person_surrogate_has_no_whitespace():
     assert anonymizer.deanonymize(s) == "Jan Kowalski"
 
 
+def test_parse_keeps_hash_inside_values():
+    d = dictionary._parse_minimal_yaml('credentials:\n  - "pa#ss"\n  - plain # comment\n')
+    assert d["credentials"] == ["pa#ss", "plain"]
+
+
+def test_user_allowlist_keeps_domain():
+    from anonproxy import regex_detector
+    regex_detector.set_user_allow(["hetzner.com"])
+    try:
+        found = {v for v, _ in regex_detector.detect("use hetzner.com and othercorp.io")}
+        assert "hetzner.com" not in found
+        assert "othercorp.io" in found
+    finally:
+        regex_detector.set_user_allow([])
+
+
 def test_ip_not_matched_inside_oid():
     # SNMP OIDs and long dotted-number runs must not yield a bogus IP.
     text = "sysUpTime .1.3.6.1.2.1.1.3.0 = 12345"
