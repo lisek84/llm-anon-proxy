@@ -100,6 +100,42 @@ ANONPROXY_CONTEXT=client-acme python -m anonproxy
 
 Each context is a partition in the same SQLite vault (`data/mappings.db`).
 
+## Mappings persist — clearing and rotating
+
+Mappings are stored permanently: within a context the same original always maps
+to the same surrogate, stable across restarts (good — a server looks the same to
+the model every session). The surrogate itself is **deterministic** from
+`data/secret.key`, so the vault is really a reverse map + collision guard, not
+the only source of the value.
+
+Clear it **between sessions, never during one** (a mid-session wipe breaks
+restoration of surrogates already in flight):
+
+```bash
+python -m anonproxy.reset                 # forget all mappings (same key)
+python -m anonproxy.reset --context acme  # forget one context only
+python -m anonproxy.reset --new-key       # also rotate the key → all-new surrogates
+python -m anonproxy.reset --all --yes     # mappings + key + logs, no prompt
+```
+
+* Forgetting mappings with the **same** key is a clean-up: the same originals
+  regenerate the **same** surrogates. Use it to shrink the vault or drop history.
+* `--new-key` rotates `data/secret.key`; afterwards every value maps to a
+  brand-new surrogate — a true rotation of the anonymization values.
+* Switching `ANONPROXY_CONTEXT` gives a fresh surrogate space without deleting
+  anything.
+
+`start_proxy.sh` can reset on launch (stop the proxy first, so this runs cleanly):
+
+```bash
+ANONPROXY_RESET=1       ./start_proxy.sh   # forget mappings
+ANONPROXY_RESET=new-key ./start_proxy.sh   # forget mappings + rotate key
+ANONPROXY_RESET=all     ./start_proxy.sh   # mappings + key + logs
+```
+
+In Docker, `docker compose down` keeps `./data`; delete that directory (or run
+`docker compose exec proxy python -m anonproxy.reset …`) to clear it.
+
 ## The rotation log
 
 Everything secret-shaped that passes through is appended to

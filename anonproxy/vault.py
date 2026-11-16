@@ -59,6 +59,29 @@ def _c() -> sqlite3.Connection:
     return _conn
 
 
+def reset(context: str | None = None) -> int:
+    """Delete stored mappings and return how many rows were removed.
+
+    context=None  → wipe every context (a full forget).
+    context="x"   → wipe only that context.
+    Deterministic surrogate generation is unaffected: with the same secret key,
+    the same originals would map to the same surrogates again. To also change the
+    surrogate values, rotate the secret key (see anonproxy.reset).
+    """
+    with _lock:
+        conn = _c()
+        if context is None:
+            n = conn.execute("SELECT COUNT(*) FROM mappings").fetchone()[0]
+            conn.execute("DELETE FROM mappings")
+        else:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM mappings WHERE context=?", (context,)
+            ).fetchone()[0]
+            conn.execute("DELETE FROM mappings WHERE context=?", (context,))
+        conn.commit()
+    return n
+
+
 def lookup_surrogate(original: str, context: str | None = None) -> str | None:
     ctx = context or config.CONTEXT_ID
     with _lock:
