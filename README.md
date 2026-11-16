@@ -1,5 +1,7 @@
 # llm-anon-proxy
 
+**English** · [Polski](README.pl.md)
+
 > Keep your private data out of Claude Code's API traffic — replace IPs,
 > domains, hostnames and secrets with reversible surrogates before requests
 > leave the machine, and restore them in the response.
