@@ -109,9 +109,15 @@ def _fake_email(original: str, attempt: int) -> str:
     return f"{user}@{dom}.example"
 
 
+# Lowercase + digits: short surrogates must be long enough and mixed enough that
+# they never occur naturally in model output / tool commands, where they would be
+# wrongly restored as a substring (deanonymize matches without word boundaries).
+_LOWER_DIGITS = _LOWER + string.digits
+
+
 def _fake_username(original: str, attempt: int) -> str:
     d = _digest("USERNAME", original, attempt)
-    return "user_" + _rand_from(d, _LOWER, 5)
+    return "user_" + _rand_from(d, _LOWER_DIGITS, 8)
 
 
 def _fake_person(original: str, attempt: int) -> str:
@@ -126,15 +132,16 @@ def _fake_person(original: str, attempt: int) -> str:
 
 def _fake_org(original: str, attempt: int) -> str:
     d = _digest("ORGANIZATION", original, attempt)
-    return _rand_from(d, _LOWER, 7).capitalize()
+    return _rand_from(d, _LOWER, 1).capitalize() + _rand_from(d[8:], _LOWER_DIGITS, 8)
 
 
 def _fake_keyword(original: str, attempt: int) -> str:
-    # Lowercase slug with no dots/spaces, so it slots into paths and filenames
-    # (/var/www/<slug>, <slug>.conf). Length tracks the original, clamped.
+    # Lowercase+digits slug with no dots/spaces, so it slots into paths and
+    # filenames (/var/www/<slug>, <slug>.conf). Min 8 + a digit mix so it never
+    # collides with a natural substring on the way back.
     d = _digest("KEYWORD", original, attempt)
-    length = max(4, min(len(original), 12))
-    return _rand_from(d, _LOWER, length)
+    length = max(8, min(len(original), 14))
+    return _rand_from(d, _LOWER_DIGITS, length)
 
 
 def _len_class(n: int) -> int:
