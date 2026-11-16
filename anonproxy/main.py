@@ -16,6 +16,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import anonymizer, dictionary, events, leaklog, llm_detector, preflight, vault, webui
 from .config import config
@@ -24,6 +25,30 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelna
 log = logging.getLogger("anonproxy")
 
 app = FastAPI(title="anonproxy")
+
+
+class _TokenMiddleware(BaseHTTPMiddleware):
+    """If ANONPROXY_TOKEN is set, require it as a URL path prefix
+    (ANTHROPIC_BASE_URL=http://host:8787/<token>) and strip it before routing.
+    /health is always open. For non-loopback deployments."""
+
+    async def dispatch(self, request: Request, call_next):
+        token = config.TOKEN
+        if not token or request.url.path == "/health":
+            return await call_next(request)
+        prefix = f"/{token}"
+        path = request.url.path
+        if path == prefix or path.startswith(prefix + "/"):
+            stripped = path[len(prefix):] or "/"
+            request.scope["path"] = stripped
+            request.scope["raw_path"] = stripped.encode()
+            return await call_next(request)
+        return Response(content=json.dumps({"type": "error", "error": {
+            "type": "forbidden", "message": "missing or wrong proxy token in path"}}),
+            status_code=403, media_type="application/json")
+
+
+app.add_middleware(_TokenMiddleware)
 
 _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "accept-encoding"}
 
@@ -80,7 +105,13 @@ async def _anon_text(text: str, source: str) -> str:
 _warned_block_types: set[str] = set()
 
 
+class UnscannableContent(Exception):
+    """Raised for a block the proxy can't scrub when BLOCK_UNSCANNABLE is on."""
+
+
 def _warn_unanonymized(kind: str) -> None:
+    if config.BLOCK_UNSCANNABLE:
+        raise UnscannableContent(kind)
     if kind not in _warned_block_types:
         _warned_block_types.add(kind)
         log.warning("'%s' blocks are NOT anonymized — their payload is forwarded "
@@ -290,12 +321,15 @@ async def _stream_and_deanon(resp: httpx.Response, client: httpx.AsyncClient, mo
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 def _llm_down_response() -> Response:
+    return _blocked_response("Local LLM anonymization layer is enabled but unreachable; "
+                             "request blocked to avoid leaking un-redacted data.")
+
+
+def _blocked_response(message: str, status: int = 503) -> Response:
     return Response(
-        content=json.dumps({"type": "error", "error": {
-            "type": "anonymizer_unavailable",
-            "message": "Local LLM anonymization layer is enabled but unreachable; "
-                       "request blocked to avoid leaking un-redacted data."}}),
-        status_code=503, media_type="application/json",
+        content=json.dumps({"type": "error",
+                            "error": {"type": "anonymizer_blocked", "message": message}}),
+        status_code=status, media_type="application/json",
     )
 
 
@@ -311,6 +345,9 @@ async def messages(request: Request) -> Response:
         if config.LLM_FAIL_CLOSED:
             log.error("LLM unavailable, blocking request: %s", exc)
             return _llm_down_response()
+    except UnscannableContent as exc:
+        return _blocked_response(f"request contains an unscannable '{exc}' block "
+                                 "(ANONPROXY_BLOCK_UNSCANNABLE=true)")
 
     leaks = anonymizer.scan_body_for_leaks(body, "messages")
     if leaks:
@@ -366,6 +403,8 @@ async def count_tokens(request: Request) -> Response:
     except llm_detector.LLMUnavailable:
         if config.LLM_FAIL_CLOSED:
             return _llm_down_response()
+    except UnscannableContent as exc:
+        return _blocked_response(f"request contains an unscannable '{exc}' block")
     leaks = anonymizer.scan_body_for_leaks(body, "count_tokens")
     if leaks:
         log.warning("%d rotation-worthy secret(s) still present in outgoing count_tokens body "
@@ -410,8 +449,11 @@ async def passthrough(request: Request, path: str) -> Response:
     headers = _fwd_headers(request)
     content = await request.body()
     # This path is NOT anonymized. Known content endpoints (/v1/messages,
-    # count_tokens) are handled above; anything else with a body is forwarded raw,
-    # so surface it in the log and record any secret-shaped values for rotation.
+    # count_tokens) are handled above; anything else with a body is forwarded raw.
+    if config.BLOCK_UNKNOWN_ENDPOINTS:
+        log.warning("blocked un-anonymized endpoint /%s (ANONPROXY_BLOCK_UNKNOWN=true)", path)
+        return _blocked_response(f"endpoint /{path} is not anonymized and blocking is on",
+                                 status=403)
     if content:
         log.warning("passthrough forwards an un-anonymized %s body for /%s (%d bytes)",
                     request.method, path, len(content))

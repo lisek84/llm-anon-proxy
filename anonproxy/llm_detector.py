@@ -71,11 +71,11 @@ async def detect(text: str) -> list[tuple[str, str]]:
             )
             resp.raise_for_status()
             raw = resp.json().get("message", {}).get("content", "")
-    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+    except httpx.HTTPError as exc:
+        # ANY transport/HTTP failure (connect, timeout, HTTP 500, …) means the
+        # LLM layer is not functioning — treat it as unavailable so fail-closed
+        # actually blocks, instead of silently degrading to regex+dict.
         raise LLMUnavailable(str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        log.warning("LLM detect error: %s", exc)
-        return []
 
     try:
         data = json.loads(_extract_json(raw))

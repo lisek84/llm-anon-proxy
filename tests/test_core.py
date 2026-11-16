@@ -142,6 +142,14 @@ def test_leak_scan_skips_metadata_and_noise():
     assert anonymizer.scan_body_for_leaks(body2, "test") == 2   # both tokens flagged
 
 
+def test_json_keys_anonymized_and_restored():
+    import json as _json
+    v = {"example.com": "up", "note": "/home/lisek/example-ops"}
+    anon = anonymizer.anonymize_value(v)
+    assert "example.com" not in _json.dumps(anon)   # sensitive KEY scrubbed too
+    assert anonymizer.deanon_value(anon) == v        # round-trips, keys included
+
+
 def test_email_with_dictionary_domain_fully_replaced():
     # The local part must not leak when the domain is in the dictionary.
     anon, back = rt("kontakt jan.kowalski@example.com proszę")

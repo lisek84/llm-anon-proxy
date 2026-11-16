@@ -40,6 +40,17 @@ class Config:
     # than forward partially-anonymized data.
     LLM_FAIL_CLOSED: bool = os.getenv("ANONPROXY_LLM_FAIL_CLOSED", "true").lower() == "true"
 
+    # ── Fail-closed options (security-by-default toggles) ─────────────────────
+    # Block (instead of forward) a request that carries content the proxy cannot
+    # scrub: image blocks and binary (non-text) document blocks.
+    BLOCK_UNSCANNABLE: bool = os.getenv("ANONPROXY_BLOCK_UNSCANNABLE", "false").lower() == "true"
+    # Block (instead of forward) any endpoint other than the anonymized ones
+    # (/v1/messages, /v1/messages/count_tokens). Forwards raw otherwise.
+    BLOCK_UNKNOWN_ENDPOINTS: bool = os.getenv("ANONPROXY_BLOCK_UNKNOWN", "false").lower() == "true"
+    # Optional shared secret for non-loopback deploys. If set, every request must
+    # carry it as a URL path prefix: ANTHROPIC_BASE_URL=http://host:8787/<token>.
+    TOKEN: str = os.getenv("ANONPROXY_TOKEN", "")
+
     # ── Isolation from the Claude Code agent ──────────────────────────────────
     # The vault, dictionary and secret key together are a full de-anonymization
     # oracle. If the agent can read them, the tool is pointless. The proxy must

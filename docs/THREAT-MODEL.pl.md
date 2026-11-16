@@ -135,7 +135,25 @@ anonimizacji.
 
 Jeśli warstwa LLM jest włączona, a Ollama padła, żądanie jest **blokowane**
 (fail-closed, domyślnie) albo **schodzi do słownik+regex dla całego żądania**
-(fail-open) — nigdy nie jest przekazywane połowicznie zanonimizowane.
+(fail-open) — nigdy nie jest przekazywane połowicznie zanonimizowane. Fail-closed
+obejmuje *każdy* błąd transportu/HTTP Ollamy (connect, timeout, HTTP 500…), nie
+tylko zerwane połączenie.
+
+### Opcjonalne przełączniki fail-closed / security-by-default
+
+Domyślnie priorytetem jest niełamanie Claude Code; te czynią go rygorystycznym:
+
+* `ANONPROXY_BLOCK_UNSCANNABLE=true` — odrzuć (503) żądanie niosące treść, której
+  proxy nie potrafi zasłonić (bloki image, binarne document), zamiast je
+  przekazywać z ostrzeżeniem.
+* `ANONPROXY_BLOCK_UNKNOWN=true` — odrzuć (403) każdy endpoint inny niż
+  anonimizowane `/v1/messages` i `/v1/messages/count_tokens`, zamiast przekazać go
+  surowo.
+* `ANONPROXY_TOKEN=<sekret>` — dla wdrożenia poza loopbackiem (osobny host/VPS),
+  wymagaj sekretu jako prefiksu ścieżki
+  (`ANTHROPIC_BASE_URL=http://host:8787/<sekret>`); żądania bez niego dostają 403.
+  Proxy nie ma poza tym uwierzytelniania per-użytkownik, więc poza tym trzymaj je
+  na loopbacku albo za tunelem SSH / firewallem.
 
 ## Detekcja jest wartościowa, nie pozycyjna
 

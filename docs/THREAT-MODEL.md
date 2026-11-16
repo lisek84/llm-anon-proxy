@@ -133,7 +133,25 @@ never break or partially skip anonymization.
 
 If the LLM layer is enabled but Ollama is down, the request is **blocked**
 (fail-closed, default) or **degrades to dictionary+regex for the whole request**
-(fail-open) — it is never forwarded half-anonymized.
+(fail-open) — it is never forwarded half-anonymized. Fail-closed covers *any*
+Ollama transport or HTTP error (connect, timeout, HTTP 500…), not only a dropped
+connection.
+
+### Optional fail-closed / security-by-default toggles
+
+Default behaviour favours not breaking Claude Code; these make it strict:
+
+* `ANONPROXY_BLOCK_UNSCANNABLE=true` — reject (503) a request carrying content
+  the proxy cannot scrub (image blocks, binary document blocks) instead of
+  forwarding it with a warning.
+* `ANONPROXY_BLOCK_UNKNOWN=true` — reject (403) any endpoint other than the
+  anonymized `/v1/messages` and `/v1/messages/count_tokens`, instead of
+  forwarding it raw.
+* `ANONPROXY_TOKEN=<secret>` — for a non-loopback deployment (separate host/VPS),
+  require the secret as a URL path prefix
+  (`ANTHROPIC_BASE_URL=http://host:8787/<secret>`); requests without it get 403.
+  The proxy still has no per-user auth beyond this, so keep it on loopback or
+  behind the SSH tunnel / firewall otherwise.
 
 ## Detection is value-based, not positional
 

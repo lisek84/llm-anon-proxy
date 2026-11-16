@@ -350,22 +350,26 @@ def deanonymize(text: str) -> str:
 
 
 def anonymize_value(obj, llm_matches=None, source: str = ""):
-    """Recursively anonymize all strings inside a JSON-like structure."""
+    """Recursively anonymize all strings inside a JSON-like structure, keys
+    included — a sensitive value can appear as a JSON key, not only a value.
+    Keys are restored symmetrically by deanon_value."""
     if isinstance(obj, str):
         return anonymize(obj, llm_matches=llm_matches, source=source)
     if isinstance(obj, dict):
-        return {k: anonymize_value(v, llm_matches, source) for k, v in obj.items()}
+        return {anonymize(k, llm_matches=llm_matches, source=source) if isinstance(k, str) else k:
+                anonymize_value(v, llm_matches, source) for k, v in obj.items()}
     if isinstance(obj, list):
         return [anonymize_value(v, llm_matches, source) for v in obj]
     return obj
 
 
 def deanon_value(obj):
-    """Recursively deanonymize all strings inside a JSON-like structure."""
+    """Recursively deanonymize all strings inside a JSON-like structure (keys too)."""
     if isinstance(obj, str):
         return deanonymize(obj)
     if isinstance(obj, dict):
-        return {k: deanon_value(v) for k, v in obj.items()}
+        return {deanonymize(k) if isinstance(k, str) else k: deanon_value(v)
+                for k, v in obj.items()}
     if isinstance(obj, list):
         return [deanon_value(v) for v in obj]
     return obj
