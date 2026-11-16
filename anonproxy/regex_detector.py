@@ -113,7 +113,8 @@ _NOCALL = r"(?!\s*\()"   # skip function calls:  logger.info ("x")
 
 _add("DOMAIN", rf"(?i)\b(?:{_LBL}\.)+(?:{_STRONG})\b{_NOCALL}")
 _add("DOMAIN", rf"(?i)\b(?:{_LBL}\.){{2,}}(?:{_AMBIG})\b{_NOCALL}")      # >=3 labels
-_add("DOMAIN", rf"(?i)\b(?:{_LBL}\.)+(?:{_AMBIG})(?=[:/])")              # trailing :port / /path
+# trailing :port (digits, not file:line:) or /path
+_add("DOMAIN", rf"(?i)\b(?:{_LBL}\.)+(?:{_AMBIG})(?=:\d{{1,5}}(?![\d:])|/)")
 _add("DOMAIN", rf"(?i)(?<=@)(?:{_LBL}\.)+(?:{_AMBIG})\b{_NOCALL}")       # user@host
 _add("DOMAIN", rf"(?i)(?<=//)(?:{_LBL}\.)+(?:{_AMBIG})\b{_NOCALL}")      # proto://host
 
@@ -159,8 +160,8 @@ def detect(text: str) -> list[tuple[str, str]]:
             val = val.strip().strip("'\"")
             if not val:
                 continue
-            if etype == "EMAIL" and _DSN_BEFORE.search(text[:mstart]):
-                continue  # "pass@host" in a DSN — not an email
+            if etype == "EMAIL" and _DSN_BEFORE.search(text[max(0, mstart - 256):mstart]):
+                continue  # "pass@host" in a DSN — not an email (window keeps this O(1))
             if etype == "IP_ADDRESS" and (val in _IP_ALLOWLIST or val in _USER_ALLOW):
                 continue
             if etype == "DOMAIN":

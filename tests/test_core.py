@@ -251,6 +251,21 @@ def test_filenames_and_code_fields_not_domains():
         assert tok in anon, f"{tok} wrongly anonymized -> {anon}"
 
 
+@pytest.mark.parametrize("text,token", [
+    ("deploy.sh:12: echo x", "deploy.sh"),
+    ("README.md:3:# Title", "README.md"),
+    ("./install.sh: line 5: foo: command not found", "install.sh"),
+])
+def test_grep_file_line_not_treated_as_domain(text, token):
+    # N5: file:line: in grep/bash output must not look like host.tld:port
+    assert token in anonymizer.anonymize(text, source="test")
+
+
+@pytest.mark.parametrize("text", ["host.io:8080", "host.io:8080/x"])
+def test_ambiguous_tld_with_real_port_is_caught(text):
+    assert "host.io" not in anonymizer.anonymize(text, source="test")
+
+
 def test_ambiguous_tld_caught_with_three_labels_or_netctx():
     # …but a real domain on an ambiguous TLD is still caught with 3 labels or ctx.
     assert "api.service.ai" not in anonymizer.anonymize("call api.service.ai now", source="test")

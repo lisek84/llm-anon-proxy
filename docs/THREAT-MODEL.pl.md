@@ -137,6 +137,25 @@ Jeśli warstwa LLM jest włączona, a Ollama padła, żądanie jest **blokowane*
 (fail-closed, domyślnie) albo **schodzi do słownik+regex dla całego żądania**
 (fail-open) — nigdy nie jest przekazywane połowicznie zanonimizowane.
 
+## Detekcja jest wartościowa, nie pozycyjna
+
+Regex decyduje per *wartość*, nie per wystąpienie, a anonimizator podmienia potem
+każde wystąpienie złapanej wartości w bloku. Warto wiedzieć:
+
+* **Wyjątki zależne od kontekstu działają per-wartość, nie per-pozycja.** Jeśli ten
+  sam ciąg wystąpi raz w kontekście pomijanym i raz w łapanym — oba zostaną
+  podmienione. `v4.14.5.1 … version 4.14.5.1` — forma z `v` jest pomijana, ale
+  drugie wystąpienie jest łapane jako IP, więc podmieniane są *oba*.
+* **Dwuczłonowe domeny na niejednoznacznym TLD nie są łapane w zwykłym tekście**
+  (`firma.it`, `foo.io`, `bar.es`): kolidują z nazwami plików i kodem, więc są
+  łapane tylko przy ≥3 etykietach lub w kontekście sieciowym (`@`, `://`, `:port`,
+  `/ścieżka`). Własne takie domeny wpisz do słownika.
+* **IP zapisane z myślnikami w nazwach PTR nie są widziane jako IP**
+  (`ec2-52-90-38-71.compute-1.amazonaws.com`). **Nie** dodawaj takich domen
+  dostawców do `allow:`, bo osadzony adres przejdzie bez anonimizacji.
+* **Kosmetyka:** cel scp `git@host.tld:ścieżka` jest łapany w całości jako e-mail,
+  więc model widzi `x@y.example:ścieżka` i traci informację, że to git.
+
 ## Co przeciekło — rejestr rotacji
 
 Skan po anonimizacji przebiega po **wartościach stringów** wychodzącego ciała (nie

@@ -135,6 +135,26 @@ If the LLM layer is enabled but Ollama is down, the request is **blocked**
 (fail-closed, default) or **degrades to dictionary+regex for the whole request**
 (fail-open) — it is never forwarded half-anonymized.
 
+## Detection is value-based, not positional
+
+Regex detection decides per *value*, not per occurrence, and the anonymizer then
+replaces every occurrence of a caught value in the block. Consequences worth
+knowing:
+
+* **Context-dependent exceptions are per-value, not per-position.** If the same
+  string appears once in a skipped context and once in a caught one, both get
+  replaced. `v4.14.5.1 … version 4.14.5.1` — the `v`-prefixed form is skipped,
+  but the second occurrence is caught as an IP, so *both* are replaced.
+* **Two-label domains on an ambiguous TLD are not caught in plain prose**
+  (`firma.it`, `foo.io`, `bar.es`): they collide with file names and code, so
+  they are only caught with ≥3 labels or a network context (`@`, `://`, `:port`,
+  `/path`). Put your own such domains in the dictionary.
+* **IPs written with hyphens in PTR names are not seen as IPs**
+  (`ec2-52-90-38-71.compute-1.amazonaws.com`). Do **not** add such provider
+  domains to `allow:`, or the embedded address rides along un-anonymized.
+* **Cosmetic:** an scp target `git@host.tld:path` is caught whole as an email,
+  so the model sees `x@y.example:path` and loses the "this is git" cue.
+
 ## What escaped — the rotation log
 
 A post-anonymization scan runs over the **string values** of the outgoing body
