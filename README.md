@@ -46,13 +46,25 @@ all of that. Everything is anonymized on the way out and restored on the way in.
 
 ## Docs
 
-* **[docs/INSTALL.md](docs/INSTALL.md)** — proxy setup + the two Ollama options.
+* **[docs/INSTALL.md](docs/INSTALL.md)** — Docker (turnkey) and native setup, plus the Ollama layer.
 * **[docs/USAGE.md](docs/USAGE.md)** — daily workflow, the dictionary, contexts,
   the rotation log, verifying, troubleshooting.
 * **[docs/THREAT-MODEL.md](docs/THREAT-MODEL.md)** — why the proxy must be
   isolated from the agent, how to deploy it, and what it does not protect.
 
 ## Setup
+
+**Docker (turnkey)** — on a machine with Docker, one command brings up the whole
+environment and writes all state next to the compose file:
+
+```bash
+git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
+cp dictionary.example.yaml dictionary.yaml   # edit with YOUR values
+docker compose up -d                         # proxy (dict + regex); add: --profile llm for Ollama
+./claude_anon                                # in your working console
+```
+
+**Native** (what WSL uses — no Docker needed):
 
 ```bash
 cd ~/llm-anon-proxy

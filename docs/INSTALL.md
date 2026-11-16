@@ -1,10 +1,47 @@
 # Installation
 
-Two parts: the **proxy** (always), and the optional **Ollama** contextual layer
-(choose Docker *or* native). Nothing here starts a public service — the proxy
-binds to `127.0.0.1` only.
+Two ways to run it: **Docker** (turnkey, best on a machine with Docker) or
+**native** (what WSL uses, since Docker isn't available there). Pick one. Nothing
+here starts a public service — the proxy binds to `127.0.0.1` only.
 
-## 1. The proxy
+## Docker (turnkey)
+
+On a machine with Docker, the whole environment comes up with one command and all
+state is written next to the compose file.
+
+```bash
+git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
+cp dictionary.example.yaml dictionary.yaml     # then edit with YOUR values
+docker compose up -d                           # builds + starts the proxy (dict + regex)
+```
+
+With the local LLM layer too (pulls the model; GPU via the NVIDIA toolkit):
+
+```bash
+ANONPROXY_LLM=true docker compose --profile llm up -d
+```
+
+Then in your working console:
+
+```bash
+./claude_anon          # or: export ANTHROPIC_BASE_URL=http://127.0.0.1:8787 && claude
+```
+
+* The proxy is published on `127.0.0.1:8787` only. Dashboard: `http://127.0.0.1:8787/ui`.
+* State (vault, secret key, rotation + audit logs) is written to **`./data`** next
+  to `docker-compose.yml`; the dictionary is bind-mounted read-only from `./dictionary.yaml`.
+* Inspect logs from the container:
+  `docker compose exec proxy python -m anonproxy.rotate` (and `… anonproxy.audit`).
+* Show real values in the dashboard: `ANONPROXY_UI_SHOW_ORIGINALS=true docker compose up -d`.
+* Stop: `docker compose down` (add `--profile llm` if you started the LLM layer).
+* Isolation note: `./data` on the host holds the de-anonymization vault. The
+  container writes it as root, but for real isolation run Docker on a different
+  host/user from Claude Code, or keep `./data` unreadable by the agent's user.
+  See [THREAT-MODEL.md](THREAT-MODEL.md).
+
+The rest of this page is the **native** path (no Docker).
+
+## 1. The proxy (native)
 
 ```bash
 cd ~/llm-anon-proxy
@@ -38,17 +75,15 @@ contextual entity with no false positives at ~0.55 s median per call on an
 
 ### Option A — Docker
 
-Runs Ollama in a container; the proxy stays on the host and connects to it.
+If you deployed with Docker above, just add the LLM profile — Ollama runs as a
+service and the proxy talks to it automatically:
 
 ```bash
-docker compose -f docker-compose.ollama.yml up -d     # starts Ollama, pulls the model
+ANONPROXY_LLM=true docker compose --profile llm up -d
 ```
 
-* Binds Ollama to `127.0.0.1:11434` only.
-* GPU is used via the NVIDIA Container Toolkit. No toolkit? Delete the `deploy:`
-  block in `docker-compose.ollama.yml` to run on CPU.
-* Change the model: `ANONPROXY_OLLAMA_MODEL=qwen3.5:9b docker compose -f docker-compose.ollama.yml up -d`
-* Stop: `docker compose -f docker-compose.ollama.yml down`
+Change the model with `ANONPROXY_OLLAMA_MODEL=qwen3.5:9b`. No NVIDIA toolkit?
+Remove the `deploy:` block from the `ollama` service to run on CPU.
 
 ### Option B — Native (WSL / Linux, no Docker) — this is the setup here
 

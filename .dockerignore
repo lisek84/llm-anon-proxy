@@ -1,0 +1,14 @@
+.venv/
+.git/
+data/
+__pycache__/
+*.pyc
+*.log
+dictionary.yaml
+dictionary.generated.yaml
+tests/
+scripts/dev/
+docs/
+.pytest_cache/
+*.db
+*.db-*

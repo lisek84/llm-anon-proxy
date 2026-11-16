@@ -1,0 +1,69 @@
+# Turnkey Docker deployment.
+#
+#   git clone … /llm-anon-proxy && cd /llm-anon-proxy
+#   cp dictionary.example.yaml dictionary.yaml   # then edit with YOUR values
+#   docker compose up -d                         # proxy only (dictionary + regex)
+#
+# With the local LLM layer (pulls the model, needs the NVIDIA toolkit for GPU):
+#   ANONPROXY_LLM=true docker compose --profile llm up -d
+#
+# Then in your working console:
+#   ./claude_anon            # or: export ANTHROPIC_BASE_URL=http://127.0.0.1:8787 && claude
+#
+# All state (vault, secret key, rotation + audit logs) is written to ./data next
+# to this file. Inspect it with:
+#   docker compose exec proxy python -m anonproxy.rotate
+#   docker compose exec proxy python -m anonproxy.audit
+
+services:
+  proxy:
+    build: .
+    image: llm-anon-proxy
+    container_name: anonproxy
+    ports:
+      - "127.0.0.1:8787:8787"        # loopback only on the host
+    environment:
+      ANONPROXY_LLM: ${ANONPROXY_LLM:-false}
+      ANONPROXY_OLLAMA_HOST: http://ollama:11434
+      ANONPROXY_OLLAMA_MODEL: ${ANONPROXY_OLLAMA_MODEL:-qwen3.5:4b}
+      ANONPROXY_UI_SHOW_ORIGINALS: ${ANONPROXY_UI_SHOW_ORIGINALS:-false}
+      ANONPROXY_ISOLATION: ${ANONPROXY_ISOLATION:-warn}
+      ANONPROXY_CONTEXT: ${ANONPROXY_CONTEXT:-default}
+    volumes:
+      - ./data:/app/data                       # persists to the compose directory
+      - ./dictionary.yaml:/app/dictionary.yaml:ro
+    restart: unless-stopped
+
+  # Local LLM layer — only started with:  --profile llm
+  ollama:
+    image: ollama/ollama:latest
+    container_name: anonproxy-ollama
+    profiles: ["llm"]
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    # GPU (optional) — needs the NVIDIA Container Toolkit. Remove this block to
+    # run the model on CPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # One-shot: wait for Ollama, pull the detector model, exit. Only with --profile llm.
+  model-pull:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    depends_on:
+      ollama:
+        condition: service_started
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      ANONPROXY_OLLAMA_MODEL: ${ANONPROXY_OLLAMA_MODEL:-qwen3.5:4b}
+    entrypoint: ["/bin/sh", "-c", "sleep 3; ollama pull \"$${ANONPROXY_OLLAMA_MODEL}\""]
+    restart: "no"
+
+volumes:
+  ollama_models:

@@ -123,7 +123,7 @@ def load(path: Path | None = None) -> None:
     p = path or config.DICT_PATH
     _entries = []
     base_values: list[str] = []
-    if p.exists():
+    if p.exists() and p.is_file():  # is_file guards a bind-mount that made a dir
         data = _parse_minimal_yaml(p.read_text(encoding="utf-8"))
         for section, values in data.items():
             etype = _SECTION_TYPES.get(section, "OTHER")
