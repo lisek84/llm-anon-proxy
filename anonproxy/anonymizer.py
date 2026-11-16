@@ -156,12 +156,17 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
         surrogate, is_new = vault.get_or_create(original, etype, surrogates.generate)
         surrogate_of[original] = surrogate
         seen_types[etype] = seen_types.get(etype, 0) + 1
-        if is_new:
-            new_count += 1
-            audit.record(original, surrogate, etype, source)
-            events.emit_catch(source, etype, original, surrogate)
-        if etype in leaklog.ROTATABLE:
-            leaklog.record(original, etype, "intercepted", source)
+        # Logging/telemetry is best-effort: it must never break anonymization
+        # (the substitution is already decided above) nor the request path.
+        try:
+            if is_new:
+                new_count += 1
+                audit.record(original, surrogate, etype, source)
+                events.emit_catch(source, etype, original, surrogate)
+            if etype in leaklog.ROTATABLE:
+                leaklog.record(original, etype, "intercepted", source)
+        except Exception:  # noqa: BLE001
+            log.exception("non-fatal: failed to record catch for %s", etype)
 
     # Stitch the output from the original text and the accepted spans.
     out_parts: list[str] = []
@@ -201,16 +206,45 @@ def scan_for_leaks(text: str, source: str = "outgoing") -> int:
 
 
 def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
-    """Return (restored_text, set of surrogates that were actually replaced)."""
+    """Return (restored_text, set of surrogates that were actually replaced).
+
+    Position-based over the original text, one pass: a restored original is never
+    re-scanned, so a surrogate that happens to be a substring of another
+    mapping's original can't cause a double or wrong replacement. Overlapping
+    surrogate matches are resolved longest-first.
+    """
     if not text:
         return text, set()
-    result = text
-    restored: set[str] = set()
+
+    spans: list[tuple[int, int, str]] = []  # (start, end, original)
     for surrogate, original in vault.all_reverse_mappings():
-        if surrogate in result:
-            result = result.replace(surrogate, original)
-            restored.add(surrogate)
-    return result, restored
+        if not surrogate:
+            continue
+        start = 0
+        while True:
+            i = text.find(surrogate, start)
+            if i < 0:
+                break
+            spans.append((i, i + len(surrogate), original))
+            start = i + len(surrogate)
+
+    accepted: list[tuple[int, int, str]] = []
+    for span in sorted(spans, key=lambda s: s[1] - s[0], reverse=True):
+        s0, s1, _ = span
+        if all(s1 <= a0 or s0 >= a1 for a0, a1, _ in accepted):
+            accepted.append(span)
+    accepted.sort(key=lambda s: s[0])
+
+    out: list[str] = []
+    cursor = 0
+    restored: set[str] = set()
+    for s0, s1, original in accepted:
+        out.append(text[cursor:s0])
+        out.append(original)
+        restored.add(text[s0:s1])
+        cursor = s1
+    out.append(text[cursor:])
+    return "".join(out), restored
 
 
 def deanonymize(text: str) -> str:

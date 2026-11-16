@@ -109,10 +109,13 @@ def _fake_username(original: str, attempt: int) -> str:
 
 
 def _fake_person(original: str, attempt: int) -> str:
+    # A single whitespace-free pseudonym token. No surrogate may contain a space:
+    # the streaming restorer emits up to the last whitespace, so a space inside a
+    # surrogate could split it across chunks and prevent it being restored.
     d = _digest("PERSON", original, attempt)
     first = _rand_from(d, _LOWER, 5).capitalize()
     last = _rand_from(d[8:], _LOWER, 6).capitalize()
-    return f"{first} {last}"
+    return f"{first}{last}"
 
 
 def _fake_org(original: str, attempt: int) -> str:

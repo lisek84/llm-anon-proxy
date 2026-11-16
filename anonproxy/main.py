@@ -48,7 +48,16 @@ def _fwd_headers(request: Request) -> dict[str, str]:
 async def _llm(text: str) -> list[tuple[str, str]]:
     if not config.LLM_ENABLED:
         return []
-    return await llm_detector.detect(text)
+    try:
+        return await llm_detector.detect(text)
+    except llm_detector.LLMUnavailable:
+        # Fail-closed: propagate so the whole request is blocked (never forwarded
+        # half-anonymized). Otherwise degrade to dictionary+regex for every
+        # string uniformly — no partial state.
+        if config.LLM_FAIL_CLOSED:
+            raise
+        log.warning("LLM layer unavailable — degrading to dictionary+regex for this request")
+        return []
 
 
 async def _anon_text(text: str, source: str) -> str:
@@ -273,6 +282,10 @@ async def count_tokens(request: Request) -> Response:
     except llm_detector.LLMUnavailable:
         if config.LLM_FAIL_CLOSED:
             return _llm_down_response()
+    leaks = anonymizer.scan_for_leaks(json.dumps(body), "count_tokens")
+    if leaks:
+        log.warning("%d secret-shaped value(s) still present in outgoing count_tokens body "
+                    "(recorded as 'leaked' for rotation)", leaks)
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(f"{config.UPSTREAM_URL}/v1/messages/count_tokens",
                                  json=body, headers=headers)
@@ -312,6 +325,16 @@ async def ui_events(request: Request):
 async def passthrough(request: Request, path: str) -> Response:
     headers = _fwd_headers(request)
     content = await request.body()
+    # This path is NOT anonymized. Known content endpoints (/v1/messages,
+    # count_tokens) are handled above; anything else with a body is forwarded raw,
+    # so surface it in the log and record any secret-shaped values for rotation.
+    if content:
+        log.warning("passthrough forwards an un-anonymized %s body for /%s (%d bytes)",
+                    request.method, path, len(content))
+        try:
+            anonymizer.scan_for_leaks(content.decode("utf-8", "replace"), f"passthrough:{path}")
+        except Exception:  # noqa: BLE001
+            pass
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.request(request.method, f"{config.UPSTREAM_URL}/{path}",
                                     headers=headers, content=content,

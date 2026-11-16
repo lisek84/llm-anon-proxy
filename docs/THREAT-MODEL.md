@@ -118,6 +118,30 @@ encryption; double-encoding; a value split across messages; and exotic encodings
 (HTML entities, ROT13, custom schemes). For anything you care about, put the real
 value in the dictionary.
 
+## Correctness of substitution
+
+Both directions replace by **position over the original text in a single pass**,
+with overlaps resolved longest-first, so a value or surrogate is never matched
+inside text that was just substituted. A domain keeps its subdomains
+(`cdn.acme.pl` → `cdn.<surrogate>`), a keyword inside a path is swapped without
+touching a neighbouring domain surrogate's `.example` TLD, and restoring never
+double-expands (no `acme.pl` → `acme.pl.pl`). Surrogates contain no whitespace,
+so streamed responses are restored whole. Logging a catch is best-effort and can
+never break or partially skip anonymization.
+
+If the LLM layer is enabled but Ollama is down, the request is **blocked**
+(fail-closed, default) or **degrades to dictionary+regex for the whole request**
+(fail-open) — it is never forwarded half-anonymized.
+
+## What escaped — the rotation log
+
+A post-anonymization scan runs over the exact bytes about to be sent. Any
+secret-shaped value still present is written to `data/rotate.log.jsonl` under
+`leaked` (vs `intercepted` for values replaced before sending). Review with
+`python -m anonproxy.rotate` and rotate every `leaked` credential/token. Bodies
+forwarded unchanged by the catch-all (unknown endpoints) are logged as a warning
+and scanned too.
+
 ## What this tool still does not protect against
 
 * **Encrypted or compressed data** — it substitutes literals; it cannot scrub a

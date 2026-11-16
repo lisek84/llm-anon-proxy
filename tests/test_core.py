@@ -139,6 +139,21 @@ def test_bare_term_not_matched_inside_fresh_surrogate():
     assert back == text  # surrogate TLD intact; nothing double-replaced
 
 
+def test_deanonymize_no_substring_corruption():
+    # Surrogate "k9" is a substring of another mapping's original "x-k9-y".
+    # Position-based restore must not turn "QQQ" into a double-expanded mess.
+    vault.get_or_create("ALPHA", "OTHER", lambda o, e, a: "k9")
+    vault.get_or_create("x-k9-y", "OTHER", lambda o, e, a: "QQQ")
+    assert anonymizer.deanonymize("run QQQ now") == "run x-k9-y now"
+    assert anonymizer.deanonymize("val k9 end") == "val ALPHA end"
+
+
+def test_person_surrogate_has_no_whitespace():
+    s, _ = vault.get_or_create("Jan Kowalski", "PERSON", surrogates.generate)
+    assert " " not in s and "\t" not in s and "\n" not in s
+    assert anonymizer.deanonymize(s) == "Jan Kowalski"
+
+
 def test_p_flag_not_matched_inside_word():
     # The -p credential rule must not fire inside "of-prod-db01".
     anon = anonymizer.anonymize("ssh of_app@of-prod-db01", source="test")
