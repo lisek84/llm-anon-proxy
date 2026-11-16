@@ -153,6 +153,11 @@ każde wystąpienie złapanej wartości w bloku. Warto wiedzieć:
 * **IP zapisane z myślnikami w nazwach PTR nie są widziane jako IP**
   (`ec2-52-90-38-71.compute-1.amazonaws.com`). **Nie** dodawaj takich domen
   dostawców do `allow:`, bo osadzony adres przejdzie bez anonimizacji.
+* **`nazwa.ext:NN` z numerem linii, ale bez końcowego dwukropka** (`see
+  deploy.sh:12 for details`) jest kształtowo identyczne z `host.io:8080`, więc
+  jest łapane jako domena. `plik:linia:` (z końcowym dwukropkiem, jak drukuje
+  grep) już nie — tylko ta forma z gołym numerem linii, nierozstrzygalna bez
+  kontekstu.
 * **Kosmetyka:** cel scp `git@host.tld:ścieżka` jest łapany w całości jako e-mail,
   więc model widzi `x@y.example:ścieżka` i traci informację, że to git.
 

@@ -152,6 +152,10 @@ knowing:
 * **IPs written with hyphens in PTR names are not seen as IPs**
   (`ec2-52-90-38-71.compute-1.amazonaws.com`). Do **not** add such provider
   domains to `allow:`, or the embedded address rides along un-anonymized.
+* **`name.ext:NN` with a line number but no trailing colon** (`see deploy.sh:12
+  for details`) is shape-identical to `host.io:8080`, so it is caught as a
+  domain. `file:line:` (trailing colon, as grep prints) is not — only this
+  bare-line-number form, which is unresolvable without context.
 * **Cosmetic:** an scp target `git@host.tld:path` is caught whole as an email,
   so the model sees `x@y.example:path` and loses the "this is git" cue.
 
