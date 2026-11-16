@@ -17,7 +17,7 @@ import logging
 import re
 import unicodedata
 
-from . import audit, dictionary, regex_detector, surrogates, vault, leaklog
+from . import audit, dictionary, events, regex_detector, surrogates, vault, leaklog
 
 log = logging.getLogger("anonproxy")
 
@@ -137,6 +137,7 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
         if is_new:
             new_count += 1
             audit.record(original, surrogate, etype, source)
+            events.emit_catch(source, etype, original, surrogate)
         if etype in leaklog.ROTATABLE:
             leaklog.record(original, etype, "intercepted", source)
 

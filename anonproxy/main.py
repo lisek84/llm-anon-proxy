@@ -16,7 +16,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 
-from . import anonymizer, dictionary, leaklog, llm_detector, preflight, vault
+from . import anonymizer, dictionary, events, leaklog, llm_detector, preflight, vault, webui
 from .config import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
@@ -96,7 +96,7 @@ async def _anon_body(body: dict) -> dict:
 
 # ── Response deanonymization ──────────────────────────────────────────────────
 
-def _deanon_json_response(data: dict) -> dict:
+def _deanon_json_response(data: dict) -> tuple[dict, int]:
     restored: set[str] = set()
     for block in data.get("content", []):
         t = block.get("type")
@@ -110,7 +110,7 @@ def _deanon_json_response(data: dict) -> dict:
             block["input"] = anonymizer.deanon_value(block.get("input", {}))
     if restored:
         log.info("← restored %d surrogate(s) in response", len(restored))
-    return data
+    return data, len(restored)
 
 
 def _safe_split(buf: str) -> tuple[str, str]:
@@ -212,9 +212,11 @@ async def _stream_and_deanon(body: dict, headers: dict):
 
                 else:
                     # message_start / ping / message_delta / message_stop / …
-                    if etype == "message_stop" and restored_all:
-                        log.info("← restored %d surrogate(s) in streamed response",
-                                 len(restored_all))
+                    if etype == "message_stop":
+                        if restored_all:
+                            log.info("← restored %d surrogate(s) in streamed response",
+                                     len(restored_all))
+                        events.emit_request(body.get("model", "?"), len(restored_all))
                     yield _sse(etype or "message", evt)
 
 
@@ -257,7 +259,8 @@ async def messages(request: Request) -> Response:
     if resp.status_code != 200:
         return Response(content=resp.content, status_code=resp.status_code,
                         media_type=resp.headers.get("content-type", "application/json"))
-    data = _deanon_json_response(resp.json())
+    data, restored = _deanon_json_response(resp.json())
+    events.emit_request(body.get("model", "?"), restored)
     return Response(content=json.dumps(data), status_code=200, media_type="application/json")
 
 
@@ -280,6 +283,29 @@ async def count_tokens(request: Request) -> Response:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "context": config.CONTEXT_ID, "mappings": vault.stats()}
+
+
+# ── Live dashboard (registered before the upstream catch-all) ─────────────────
+
+@app.get("/ui")
+async def ui_page():
+    if not config.UI_ENABLED:
+        return Response(status_code=404)
+    return webui.page()
+
+
+@app.get("/ui/stats")
+async def ui_stats():
+    if not config.UI_ENABLED:
+        return Response(status_code=404)
+    return webui.stats_json()
+
+
+@app.get("/ui/events")
+async def ui_events(request: Request):
+    if not config.UI_ENABLED:
+        return Response(status_code=404)
+    return await webui.events_stream(request)
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])

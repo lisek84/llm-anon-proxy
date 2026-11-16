@@ -122,6 +122,18 @@ python -m anonproxy.rotate        # secret-shaped values to rotate
 The proxy also logs each request live (`anonymized N … (M new)` out,
 `restored N` back). Full detail: [docs/USAGE.md](docs/USAGE.md#verifying-it-works--where-to-see-the-trace).
 
+### Live dashboard
+
+Open **`http://127.0.0.1:8787/ui`** in a browser next to your Claude Code window
+for a colour-coded, auto-updating feed of what the proxy catches as it works —
+entity type, source, original → surrogate, and running counts. No login.
+
+By default the dashboard **masks** originals (type, masked preview, and the full
+surrogate) so the HTTP view is not a de-anonymization oracle — important when the
+proxy is isolated from the agent. To show real values (loopback only; the agent
+could then read them too): `ANONPROXY_UI_SHOW_ORIGINALS=true`. Disable the UI
+entirely with `ANONPROXY_UI=false`.
+
 ## Rotation log
 
 Every secret-shaped value seen is appended to `data/rotate.log.jsonl` (`0600`,
@@ -155,6 +167,8 @@ same IP maps to different surrogates in different contexts).
 | `ANONPROXY_DATA_DIR` | `./data` | db, secret key, rotation + audit logs |
 | `ANONPROXY_AUDIT` | `true` | write the `original -> surrogate` audit trail |
 | `ANONPROXY_ISOLATION` | `warn` | `warn` / `enforce` / `off` (see THREAT-MODEL) |
+| `ANONPROXY_UI` | `true` | serve the live dashboard at `/ui` |
+| `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | reveal real values in the dashboard |
 
 ## Limitations
 

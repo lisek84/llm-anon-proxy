@@ -44,9 +44,17 @@ usernames:
   - of_app
 organizations: # brand / project / company names, incl. bare words
   - onlyfans
+keywords:       # bare words caught as a component anywhere:
+  - onlyfans     #   /var/www/onlyfans, onlyfans.conf, onlyfans-worker
 paths:          # sensitive absolute paths
   - /home/lisek/onlyfans-ops
 ```
+
+`keywords` are matched as substrings wherever they appear, so a project name
+embedded in a path or filename is caught. A longer value still wins first, so
+listing both `keywords: onlyfans` and `domains: onlyfans.com` keeps a full domain
+handled as a domain (`cdn3.onlyfans.com`) while a bare `/var/www/onlyfans` uses
+the keyword surrogate.
 
 What to put here: the high-value things a scan cannot infer — brand/project
 names, internal hostnames, service accounts, sensitive paths. Identifiers like

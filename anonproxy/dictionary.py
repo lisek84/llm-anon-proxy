@@ -40,6 +40,11 @@ _SECTION_TYPES = {
     "paths": "PATH",
     "tokens": "TOKEN",
     "credentials": "CREDENTIAL",
+    # A bare brand/project word to catch wherever it appears as a component:
+    # /var/www/onlyfans, onlyfans.conf, sites-enabled/onlyfans, etc. Matched as
+    # a substring; because longer dictionary/regex values win first (longest
+    # match first), a full domain like onlyfans.com is still handled as a domain.
+    "keywords": "KEYWORD",
     "other": "OTHER",
 }
 

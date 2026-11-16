@@ -63,6 +63,16 @@ class Config:
     AUDIT_ENABLED: bool = os.getenv("ANONPROXY_AUDIT", "true").lower() == "true"
     AUDIT_PATH = Path(os.getenv("ANONPROXY_AUDIT_PATH", str(DATA_DIR / "audit.log.jsonl")))
 
+    # ── Live web dashboard ────────────────────────────────────────────────────
+    # A read-only page at /ui showing proxy activity in real time. Served on the
+    # same loopback port. By default it MASKS the original values (shows type,
+    # source, masked preview and the surrogate) so the HTTP view is not a full
+    # de-anonymization oracle — important when the proxy is isolated from the
+    # agent. Set UI_SHOW_ORIGINALS=true to reveal real values (accept that the
+    # agent, sharing loopback, could then read them over HTTP).
+    UI_ENABLED: bool = os.getenv("ANONPROXY_UI", "true").lower() == "true"
+    UI_SHOW_ORIGINALS: bool = os.getenv("ANONPROXY_UI_SHOW_ORIGINALS", "false").lower() == "true"
+
     def __init__(self) -> None:
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
 

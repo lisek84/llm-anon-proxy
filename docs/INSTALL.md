@@ -105,6 +105,6 @@ claude
 
 ```bash
 curl -s http://127.0.0.1:8787/health          # {"status":"ok",...}
-python -m pytest -q                            # 42 passing
+python -m pytest -q                            # 45 passing
 python scripts/dev/bench_llm.py qwen3.5:4b     # LLM layer score (needs Ollama)
 ```

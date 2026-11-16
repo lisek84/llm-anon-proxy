@@ -120,6 +120,14 @@ def _fake_org(original: str, attempt: int) -> str:
     return _rand_from(d, _LOWER, 7).capitalize()
 
 
+def _fake_keyword(original: str, attempt: int) -> str:
+    # Lowercase slug with no dots/spaces, so it slots into paths and filenames
+    # (/var/www/<slug>, <slug>.conf). Length tracks the original, clamped.
+    d = _digest("KEYWORD", original, attempt)
+    length = max(4, min(len(original), 12))
+    return _rand_from(d, _LOWER, length)
+
+
 def _len_class(n: int) -> int:
     # Preserve an order-of-magnitude length so the model keeps proportion.
     for cls in (8, 12, 16, 20, 24, 32, 40, 64, 128):
@@ -219,6 +227,8 @@ def generate(original: str, entity_type: str, attempt: int = 0) -> str:
         return _fake_person(original, attempt)
     if entity_type == "ORGANIZATION":
         return _fake_org(original, attempt)
+    if entity_type == "KEYWORD":
+        return _fake_keyword(original, attempt)
     if entity_type == "CREDENTIAL":
         return _fake_credential(original, attempt)
     if entity_type == "HASH":

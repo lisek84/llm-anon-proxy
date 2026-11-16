@@ -25,5 +25,11 @@ usernames:
 organizations:
   - onlyfans
 
+# Bare brand/project words caught wherever they appear as a component —
+# /var/www/onlyfans, sites-enabled/onlyfans.conf, onlyfans-worker. A full domain
+# like onlyfans.com is still handled as a domain (the longer match wins first).
+keywords:
+  - onlyfans
+
 paths:
   - /home/lisek/onlyfans-ops
