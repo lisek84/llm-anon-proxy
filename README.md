@@ -71,11 +71,18 @@ python scripts/gen_dictionary.py --from .env --hostname --git   # review, then m
 
 ```bash
 # terminal 1 — start the proxy (loopback only)
-python -m anonproxy
+./start_proxy.sh
 
-# terminal 2 — point Claude Code at it
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
-claude
+# terminal 2 — launch Claude Code through it
+./claude_anon
+```
+
+`claude_anon` refuses to start if the proxy isn't reachable, so you never run
+Claude Code against the real API by accident. Equivalent by hand:
+
+```bash
+python -m anonproxy                                   # terminal 1
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8787 && claude   # terminal 2
 ```
 
 Your API credentials pass straight through to Anthropic and are never logged.

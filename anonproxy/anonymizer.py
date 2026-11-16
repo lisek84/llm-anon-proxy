@@ -188,20 +188,60 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
     return result
 
 
+# Only high-confidence, rotation-worthy secrets are recorded as "leaked".
+# Hashes/checksums and protocol ids are too noisy (and not things you rotate).
+_LEAK_SCAN_TYPES = frozenset({"CREDENTIAL", "TOKEN"})
+
+# Request fields that are protocol/transport, not user content — never scanned.
+# metadata.user_id is the caller's own Anthropic account id (64-hex): it must go
+# upstream anyway and is not a secret to rotate, so scanning it just cries wolf.
+_LEAK_SKIP_KEYS = frozenset({"metadata"})
+
+
+def _record_leak(val: str, etype: str, source: str) -> int:
+    if etype not in _LEAK_SCAN_TYPES:
+        return 0
+    # Our own shape-preserving surrogates (e.g. a fake ghp_ token) match the same
+    # patterns — skip anything already known to the vault as a surrogate.
+    if vault.surrogate_exists(val):
+        return 0
+    leaklog.record(val, etype, "leaked", source)
+    return 1
+
+
 def scan_for_leaks(text: str, source: str = "outgoing") -> int:
-    """Scan already-anonymized text for secret-shaped values that slipped
-    through, and record them as 'leaked' (they are about to reach the API).
-    Returns the number of distinct leaks found."""
+    """Scan one already-anonymized string for rotation-worthy secrets that
+    slipped through, recording them as 'leaked'. Returns the count found."""
     count = 0
     for val, etype in regex_detector.detect(text):
-        if etype not in leaklog.ROTATABLE:
-            continue
-        # Our own shape-preserving surrogates (e.g. a fake ghp_ token) match the
-        # same patterns — skip anything already known to the vault as a surrogate.
-        if vault.surrogate_exists(val):
-            continue
-        leaklog.record(val, etype, "leaked", source)
-        count += 1
+        count += _record_leak(val, etype, source)
+    return count
+
+
+def _iter_strings(obj, skip_keys: frozenset[str]):
+    """Yield every string value in a JSON-like structure, skipping subtrees
+    under keys in skip_keys."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in skip_keys:
+                continue
+            yield from _iter_strings(v, skip_keys)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _iter_strings(v, skip_keys)
+
+
+def scan_body_for_leaks(body, source: str = "outgoing") -> int:
+    """Scan the string VALUES of an outgoing request body (not its JSON
+    serialization, which would create escape-boundary false positives), skipping
+    protocol fields like `metadata`. Records rotation-worthy leaks. Returns count.
+    """
+    count = 0
+    for s in _iter_strings(body, _LEAK_SKIP_KEYS):
+        for val, etype in regex_detector.detect(s):
+            count += _record_leak(val, etype, source)
     return count
 
 

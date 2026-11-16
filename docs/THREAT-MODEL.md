@@ -135,10 +135,14 @@ If the LLM layer is enabled but Ollama is down, the request is **blocked**
 
 ## What escaped — the rotation log
 
-A post-anonymization scan runs over the exact bytes about to be sent. Any
-secret-shaped value still present is written to `data/rotate.log.jsonl` under
-`leaked` (vs `intercepted` for values replaced before sending). Review with
-`python -m anonproxy.rotate` and rotate every `leaked` credential/token. Bodies
+A post-anonymization scan runs over the **string values** of the outgoing body
+(not its JSON serialization, which would create escape-boundary false matches),
+skipping protocol fields such as `metadata` (the caller's own Anthropic account
+id lives there and is not a secret to rotate). Rotation-worthy secrets still
+present — credentials and tokens — are written to `data/rotate.log.jsonl` under
+`leaked` (vs `intercepted` for values replaced before sending). Hashes/checksums
+and ids are intentionally not recorded as leaks (too noisy, not rotatable).
+Review with `python -m anonproxy.rotate` and rotate every `leaked` entry. Bodies
 forwarded unchanged by the catch-all (unknown endpoints) are logged as a warning
 and scanned too.
 

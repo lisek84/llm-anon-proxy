@@ -129,6 +129,19 @@ def test_encoded_boundary_no_partial_match():
     assert longer in anon
 
 
+def test_leak_scan_skips_metadata_and_noise():
+    from anonproxy import leaklog
+    leaklog._seen_hashes.clear()
+    body = {
+        "metadata": {"user_id": "a" * 64},                 # account id — must be ignored
+        "messages": [{"role": "user", "content": "checksum " + "b" * 32}],  # a hash — not rotatable
+    }
+    assert anonymizer.scan_body_for_leaks(body, "test") == 0
+    leaklog._seen_hashes.clear()
+    body2 = {"messages": [{"role": "user", "content": f"keys {_AKIA} and {_GHP}"}]}
+    assert anonymizer.scan_body_for_leaks(body2, "test") == 2   # both tokens flagged
+
+
 def test_bare_term_not_matched_inside_fresh_surrogate():
     # A bare dictionary word ("example") must not match inside a domain surrogate
     # just inserted (whose TLD is ".example"). Replacement is position-based over

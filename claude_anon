@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Launch Claude Code routed through the local anonymization proxy.
+# Usage: ./claude_anon [any claude args...]
+#
+# It points ANTHROPIC_BASE_URL at the proxy and refuses to start if the proxy
+# is not reachable — so you never run Claude Code against the real API by
+# accident (which would send your data un-anonymized).
+set -euo pipefail
+
+HOST="${ANONPROXY_HOST:-127.0.0.1}"
+PORT="${ANONPROXY_PORT:-8787}"
+BASE="${ANTHROPIC_BASE_URL:-http://${HOST}:${PORT}}"
+
+if ! curl -fsS --max-time 2 "${BASE}/health" >/dev/null 2>&1; then
+    echo "anonproxy is not reachable at ${BASE}" >&2
+    echo "Start it first in another window:  ./start_proxy.sh" >&2
+    exit 1
+fi
+
+export ANTHROPIC_BASE_URL="${BASE}"
+echo "Claude Code → ${ANTHROPIC_BASE_URL} (anonymized). Dashboard: ${BASE}/ui"
+exec claude "$@"

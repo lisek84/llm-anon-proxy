@@ -254,10 +254,10 @@ async def messages(request: Request) -> Response:
             log.error("LLM unavailable, blocking request: %s", exc)
             return _llm_down_response()
 
-    leaks = anonymizer.scan_for_leaks(json.dumps(body), "messages")
+    leaks = anonymizer.scan_body_for_leaks(body, "messages")
     if leaks:
-        log.warning("%d secret-shaped value(s) still present in outgoing body "
-                    "(recorded as 'leaked' for rotation)", leaks)
+        log.warning("%d rotation-worthy secret(s) still present in outgoing body "
+                    "(recorded as 'leaked')", leaks)
 
     if want_stream:
         return StreamingResponse(_stream_and_deanon(body, headers),
@@ -282,10 +282,10 @@ async def count_tokens(request: Request) -> Response:
     except llm_detector.LLMUnavailable:
         if config.LLM_FAIL_CLOSED:
             return _llm_down_response()
-    leaks = anonymizer.scan_for_leaks(json.dumps(body), "count_tokens")
+    leaks = anonymizer.scan_body_for_leaks(body, "count_tokens")
     if leaks:
-        log.warning("%d secret-shaped value(s) still present in outgoing count_tokens body "
-                    "(recorded as 'leaked' for rotation)", leaks)
+        log.warning("%d rotation-worthy secret(s) still present in outgoing count_tokens body "
+                    "(recorded as 'leaked')", leaks)
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(f"{config.UPSTREAM_URL}/v1/messages/count_tokens",
                                  json=body, headers=headers)
