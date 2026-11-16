@@ -76,6 +76,16 @@ async def _anon_text(text: str, source: str) -> str:
     return anonymizer.anonymize(text, llm_matches=matches, source=source)
 
 
+_warned_block_types: set[str] = set()
+
+
+def _warn_unanonymized(kind: str) -> None:
+    if kind not in _warned_block_types:
+        _warned_block_types.add(kind)
+        log.warning("'%s' blocks are NOT anonymized — their payload is forwarded "
+                    "as-is (logged once per type)", kind)
+
+
 async def _anon_block(block: dict, source: str) -> dict:
     t = block.get("type")
     if t == "text" and isinstance(block.get("text"), str):
@@ -94,6 +104,20 @@ async def _anon_block(block: dict, source: str) -> dict:
             block["content"] = await _anon_text(c, source)
         elif isinstance(c, list):
             block["content"] = [await _anon_block(b, source) for b in c]
+    elif t == "document":
+        src = block.get("source")
+        if isinstance(src, dict) and src.get("type") == "text" and isinstance(src.get("data"), str):
+            src["data"] = await _anon_text(src["data"], source)
+        else:
+            _warn_unanonymized("document")  # base64 PDF/image payloads can't be scrubbed
+    elif t == "search_result":
+        c = block.get("content")
+        if isinstance(c, list):
+            block["content"] = [await _anon_block(b, source) for b in c]
+    elif t == "image":
+        _warn_unanonymized("image")  # screenshots may contain real data
+    elif t is not None:
+        _warn_unanonymized(t)
     return block
 
 
@@ -114,6 +138,11 @@ async def _anon_body(body: dict) -> dict:
         body["system"] = [await _anon_block(b, "system") for b in sys_p]
     if isinstance(body.get("messages"), list):
         body["messages"] = [await _anon_message(m) for m in body["messages"]]
+    # Tool definitions (esp. MCP) can embed real values in their descriptions.
+    if isinstance(body.get("tools"), list):
+        for tool in body["tools"]:
+            if isinstance(tool, dict) and isinstance(tool.get("description"), str):
+                tool["description"] = await _anon_text(tool["description"], "tools")
     return body
 
 

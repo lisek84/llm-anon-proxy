@@ -165,3 +165,22 @@ async def test_request_anonymized_and_response_restored():
     # 2) The streamed response restored the real IP, in text and in tool_use JSON.
     assert text == "ssh root@185.12.34.56 now", repr(text)
     assert json.loads(tool_json)["command"] == "ping 185.12.34.56", repr(tool_json)
+
+
+@pytest.mark.asyncio
+async def test_document_text_and_tool_description_anonymized():
+    # A3: document(source.type=text).data and tools[].description are scrubbed.
+    body = {
+        "model": "m", "messages": [
+            {"role": "user", "content": [
+                {"type": "document",
+                 "source": {"type": "text", "media_type": "text/plain",
+                            "data": "host of-prod-db01 at 185.12.34.56"}}]}],
+        "tools": [{"name": "deploy", "description": "pushes to example.com prod",
+                   "input_schema": {"type": "object"}}],
+    }
+    from anonproxy import main
+    out = await main._anon_body(body)
+    doc = out["messages"][0]["content"][0]["source"]["data"]
+    assert "of-prod-db01" not in doc and "185.12.34.56" not in doc
+    assert "example.com" not in out["tools"][0]["description"]
