@@ -43,6 +43,17 @@ def _fwd_headers(request: Request) -> dict[str, str]:
     return {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
 
 
+# Upstream response headers worth passing back to Claude Code (request-id,
+# anthropic-ratelimit-*, retry-after …). Drop hop-by-hop and length/encoding —
+# we re-serialize or re-chunk the body, so the originals no longer apply.
+_RESP_DROP = {"content-length", "content-encoding", "transfer-encoding",
+              "connection", "keep-alive", "content-type"}
+
+
+def _resp_headers(resp: httpx.Response) -> dict[str, str]:
+    return {k: v for k, v in resp.headers.items() if k.lower() not in _RESP_DROP}
+
+
 # ── Request anonymization ─────────────────────────────────────────────────────
 
 async def _llm(text: str) -> list[tuple[str, str]]:
@@ -69,8 +80,11 @@ async def _anon_block(block: dict, source: str) -> dict:
     t = block.get("type")
     if t == "text" and isinstance(block.get("text"), str):
         block["text"] = await _anon_text(block["text"], source)
-    elif t == "thinking" and isinstance(block.get("thinking"), str):
-        block["thinking"] = await _anon_text(block["thinking"], source)
+    elif t == "thinking":
+        # Pass through unchanged, both directions: the model only ever saw
+        # surrogates, so thinking carries no real data, and altering it would
+        # break the block's signature (the API rejects a mismatched thinking).
+        pass
     elif t == "tool_use":
         matches = await _llm(json.dumps(block.get("input", {})))
         block["input"] = anonymizer.anonymize_value(block.get("input", {}), matches, source)
@@ -112,9 +126,8 @@ def _deanon_json_response(data: dict) -> tuple[dict, int]:
         if t == "text" and isinstance(block.get("text"), str):
             block["text"], r = anonymizer.deanonymize_detailed(block["text"])
             restored |= r
-        elif t == "thinking" and isinstance(block.get("thinking"), str):
-            block["thinking"], r = anonymizer.deanonymize_detailed(block["thinking"])
-            restored |= r
+        elif t == "thinking":
+            pass  # pass through unchanged (see _anon_block) — preserve signature
         elif t == "tool_use":
             block["input"] = anonymizer.deanon_value(block.get("input", {}))
     if restored:
@@ -136,97 +149,112 @@ def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
-async def _stream_and_deanon(body: dict, headers: dict):
-    """Forward as a stream, restoring real values in text and tool_use deltas."""
+def _deanon_tool_json(raw: str) -> tuple[str, set[str]]:
+    """Deanonymize a complete tool_use input JSON string safely.
+
+    Parse → deanonymize each string value → re-serialize, so a restored value
+    containing a quote, backslash or newline (a PEM key, a password) stays valid
+    JSON. If the buffer isn't valid JSON (shouldn't happen at block stop), fall
+    back to a raw text restore of the whole buffer.
+    """
+    try:
+        obj = json.loads(raw)
+    except (ValueError, json.JSONDecodeError):
+        return anonymizer.deanonymize_detailed(raw)
+    restored: set[str] = set()
+
+    def walk(o):
+        if isinstance(o, str):
+            out, r = anonymizer.deanonymize_detailed(o)
+            restored.update(r)
+            return out
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+
+    return json.dumps(walk(obj)), restored
+
+
+async def _stream_and_deanon(resp: httpx.Response, client: httpx.AsyncClient, model: str):
+    """Restore real values in an already-open 200 SSE stream, then close it."""
     text_buf: dict[int, str] = {}
     json_buf: dict[int, str] = {}
     block_type: dict[int, str] = {}
     restored_all: set[str] = set()
+    try:
+        async for line in resp.aiter_lines():
+            if not line.startswith("data:"):
+                continue
+            data_str = line[len("data:"):].strip()
+            if not data_str:
+                continue
+            try:
+                evt = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            etype = evt.get("type")
 
-    async with httpx.AsyncClient(timeout=600) as client:
-        async with client.stream(
-            "POST", f"{config.UPSTREAM_URL}/v1/messages", json=body, headers=headers
-        ) as resp:
-            if resp.status_code != 200:
-                raw = await resp.aread()
-                yield _sse("error", {"type": "error",
-                                     "error": {"type": "upstream_error",
-                                               "message": raw.decode("utf-8", "replace")[:500]}})
-                return
-            async for line in resp.aiter_lines():
-                if not line.startswith("data:"):
-                    continue
-                data_str = line[len("data:"):].strip()
-                if not data_str:
-                    continue
-                try:
-                    evt = json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
-                etype = evt.get("type")
+            if etype == "content_block_start":
+                idx = evt.get("index", 0)
+                block_type[idx] = evt.get("content_block", {}).get("type", "text")
+                text_buf[idx] = ""
+                json_buf[idx] = ""
+                yield _sse("content_block_start", evt)
 
-                if etype == "content_block_start":
-                    idx = evt.get("index", 0)
-                    cb = evt.get("content_block", {})
-                    block_type[idx] = cb.get("type", "text")
-                    text_buf[idx] = ""
-                    json_buf[idx] = ""
-                    yield _sse("content_block_start", evt)
-
-                elif etype == "content_block_delta":
-                    idx = evt.get("index", 0)
-                    delta = evt.get("delta", {})
-                    dtype = delta.get("type")
-                    if dtype in ("text_delta", "thinking_delta"):
-                        field = "text" if dtype == "text_delta" else "thinking"
-                        text_buf[idx] = text_buf.get(idx, "") + delta.get(field, "")
-                        emit, hold = _safe_split(text_buf[idx])
-                        text_buf[idx] = hold
-                        if emit:
-                            restored_text, r = anonymizer.deanonymize_detailed(emit)
-                            restored_all |= r
-                            out = dict(delta)
-                            out[field] = restored_text
-                            yield _sse("content_block_delta",
-                                       {"type": "content_block_delta", "index": idx, "delta": out})
-                    elif dtype == "input_json_delta":
-                        json_buf[idx] = json_buf.get(idx, "") + delta.get("partial_json", "")
-                        # held until block stop (JSON must stay well-formed)
-                    else:
-                        yield _sse("content_block_delta", evt)
-
-                elif etype == "content_block_stop":
-                    idx = evt.get("index", 0)
-                    if block_type.get(idx) == "tool_use":
-                        restored_json, r = anonymizer.deanonymize_detailed(json_buf.get(idx, ""))
+            elif etype == "content_block_delta":
+                idx = evt.get("index", 0)
+                delta = evt.get("delta", {})
+                dtype = delta.get("type")
+                if dtype == "text_delta":
+                    # Buffer, emit up to the last whitespace, restore that part.
+                    text_buf[idx] = text_buf.get(idx, "") + delta.get("text", "")
+                    emit, hold = _safe_split(text_buf[idx])
+                    text_buf[idx] = hold
+                    if emit:
+                        restored_text, r = anonymizer.deanonymize_detailed(emit)
                         restored_all |= r
-                        if restored_json:
-                            yield _sse("content_block_delta", {
-                                "type": "content_block_delta", "index": idx,
-                                "delta": {"type": "input_json_delta", "partial_json": restored_json},
-                            })
-                    else:
-                        tail = text_buf.get(idx, "")
-                        if tail:
-                            field = "thinking" if block_type.get(idx) == "thinking" else "text"
-                            restored_tail, r = anonymizer.deanonymize_detailed(tail)
-                            restored_all |= r
-                            yield _sse("content_block_delta", {
-                                "type": "content_block_delta", "index": idx,
-                                "delta": {"type": f"{field}_delta", field: restored_tail},
-                            })
-                    text_buf.pop(idx, None)
-                    json_buf.pop(idx, None)
-                    yield _sse("content_block_stop", {"type": "content_block_stop", "index": idx})
-
+                        yield _sse("content_block_delta", {
+                            "type": "content_block_delta", "index": idx,
+                            "delta": {"type": "text_delta", "text": restored_text}})
+                elif dtype == "input_json_delta":
+                    # Any *_tool_use block: buffer until stop (JSON stays well-formed).
+                    json_buf[idx] = json_buf.get(idx, "") + delta.get("partial_json", "")
                 else:
-                    # message_start / ping / message_delta / message_stop / …
-                    if etype == "message_stop":
-                        if restored_all:
-                            log.info("← restored %d surrogate(s) in streamed response",
-                                     len(restored_all))
-                        events.emit_request(body.get("model", "?"), len(restored_all))
-                    yield _sse(etype or "message", evt)
+                    # thinking_delta, signature_delta, … pass through UNCHANGED:
+                    # thinking only ever contains surrogates (the model saw only
+                    # those) and its signature must not be altered.
+                    yield _sse("content_block_delta", evt)
+
+            elif etype == "content_block_stop":
+                idx = evt.get("index", 0)
+                if json_buf.get(idx):                     # a tool_use of any kind
+                    restored_json, r = _deanon_tool_json(json_buf[idx])
+                    restored_all |= r
+                    yield _sse("content_block_delta", {
+                        "type": "content_block_delta", "index": idx,
+                        "delta": {"type": "input_json_delta", "partial_json": restored_json}})
+                elif text_buf.get(idx):                   # flush a text tail
+                    restored_tail, r = anonymizer.deanonymize_detailed(text_buf[idx])
+                    restored_all |= r
+                    yield _sse("content_block_delta", {
+                        "type": "content_block_delta", "index": idx,
+                        "delta": {"type": "text_delta", "text": restored_tail}})
+                text_buf.pop(idx, None)
+                json_buf.pop(idx, None)
+                yield _sse("content_block_stop", {"type": "content_block_stop", "index": idx})
+
+            else:
+                if etype == "message_stop":
+                    if restored_all:
+                        log.info("← restored %d surrogate(s) in streamed response",
+                                 len(restored_all))
+                    events.emit_request(model, len(restored_all))
+                yield _sse(etype or "message", evt)
+    finally:
+        await resp.aclose()
+        await client.aclose()
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -259,18 +287,40 @@ async def messages(request: Request) -> Response:
         log.warning("%d rotation-worthy secret(s) still present in outgoing body "
                     "(recorded as 'leaked')", leaks)
 
+    model = body.get("model", "?")
+
     if want_stream:
-        return StreamingResponse(_stream_and_deanon(body, headers),
+        # Open the stream and check the status BEFORE committing to streaming, so
+        # upstream errors keep their real HTTP status, headers (retry-after,
+        # anthropic-ratelimit-*, request-id) and error.type — Claude Code needs
+        # those for backoff and auto-compact.
+        client = httpx.AsyncClient(timeout=600)
+        req = client.build_request("POST", f"{config.UPSTREAM_URL}/v1/messages",
+                                   json=body, headers=headers)
+        resp = await client.send(req, stream=True)
+        if resp.status_code != 200:
+            raw = await resp.aread()
+            hdrs = _resp_headers(resp)
+            await resp.aclose()
+            await client.aclose()
+            return Response(content=anonymizer.deanonymize(raw.decode("utf-8", "replace")),
+                            status_code=resp.status_code,
+                            headers=hdrs,
+                            media_type=resp.headers.get("content-type", "application/json"))
+        return StreamingResponse(_stream_and_deanon(resp, client, model),
+                                 status_code=200, headers=_resp_headers(resp),
                                  media_type="text/event-stream")
 
     async with httpx.AsyncClient(timeout=600) as client:
         resp = await client.post(f"{config.UPSTREAM_URL}/v1/messages", json=body, headers=headers)
     if resp.status_code != 200:
-        return Response(content=resp.content, status_code=resp.status_code,
+        return Response(content=anonymizer.deanonymize(resp.text),
+                        status_code=resp.status_code, headers=_resp_headers(resp),
                         media_type=resp.headers.get("content-type", "application/json"))
     data, restored = _deanon_json_response(resp.json())
-    events.emit_request(body.get("model", "?"), restored)
-    return Response(content=json.dumps(data), status_code=200, media_type="application/json")
+    events.emit_request(model, restored)
+    return Response(content=json.dumps(data), status_code=200, headers=_resp_headers(resp),
+                    media_type="application/json")
 
 
 @app.post("/v1/messages/count_tokens")

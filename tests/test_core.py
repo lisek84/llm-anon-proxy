@@ -142,6 +142,21 @@ def test_leak_scan_skips_metadata_and_noise():
     assert anonymizer.scan_body_for_leaks(body2, "test") == 2   # both tokens flagged
 
 
+def test_email_with_dictionary_domain_fully_replaced():
+    # The local part must not leak when the domain is in the dictionary.
+    anon, back = rt("kontakt jan.kowalski@example.com proszę")
+    assert "jan.kowalski" not in anon
+    assert "example.com" not in anon
+    assert back == "kontakt jan.kowalski@example.com proszę"
+
+
+def test_credential_containing_dictionary_domain_fully_replaced():
+    anon, back = rt("password=Tajne.example.com!2024")
+    assert "Tajne." not in anon and "!2024" not in anon
+    assert "example.com" not in anon
+    assert back == "password=Tajne.example.com!2024"
+
+
 def test_bare_term_not_matched_inside_fresh_surrogate():
     # A bare dictionary word ("example") must not match inside a domain surrogate
     # just inserted (whose TLD is ".example"). Replacement is position-based over

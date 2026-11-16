@@ -92,17 +92,20 @@ def _collect(text: str, llm_matches: list[tuple[str, str]] | None) -> dict[str, 
         entities[val] = etype
         dict_vals[val] = etype
 
-    # Subdomain preservation: if a longer detection (e.g. a regex FQDN
-    # cdn3.example.com) strictly contains a dictionary DOMAIN (example.com),
-    # drop the longer one so only the registrable part is swapped and the
-    # cdn3. subdomain structure is kept. This applies ONLY to domain values —
-    # a brand/org word that happens to sit inside a domain must NOT suppress
-    # replacing the whole FQDN.
-    preserve_structure = {"DOMAIN"}
+    # Subdomain preservation: if a regex FQDN (e.g. cdn3.example.com) strictly
+    # contains a dictionary DOMAIN (example.com), drop the longer FQDN so only
+    # the registrable part is swapped and the cdn3. subdomain structure is kept.
+    #
+    # This fires ONLY when the longer match is ITSELF a DOMAIN. An EMAIL, a
+    # CREDENTIAL or a TOKEN that merely contains a dictionary domain must be kept
+    # and replaced whole — otherwise only the domain part is swapped and the rest
+    # (the email's local part, a password's prefix/suffix) leaks. Keeping it means
+    # longest-match-first replaces the whole value and the inner domain span is
+    # skipped as an overlap.
     for key in list(entities):
-        if key in dict_vals:
+        if key in dict_vals or entities[key] != "DOMAIN":
             continue
-        if any(d != key and d in key and dtype in preserve_structure
+        if any(d != key and d in key and dtype == "DOMAIN"
                for d, dtype in dict_vals.items()):
             del entities[key]
 
