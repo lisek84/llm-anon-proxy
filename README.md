@@ -144,7 +144,7 @@ The proxy also logs each request live (`anonymized N … (M new)` out,
 ### Live dashboard
 
 Open **`http://127.0.0.1:8787/ui`** in a browser next to your Claude Code window
-for a colour-coded, auto-updating feed of what the proxy catches as it works —
+for a color-coded, auto-updating feed of what the proxy catches as it works —
 entity type, source, original → surrogate, and running counts. No login.
 
 By default the dashboard **masks** originals (type, masked preview, and the full
