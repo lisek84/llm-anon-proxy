@@ -173,6 +173,29 @@ The audit trail `data/audit.log.jsonl` (`0600`) holds the real
 Set `ANONPROXY_CONTEXT=client-x` to keep each project's mappings separate (the
 same IP maps to different surrogates in different contexts).
 
+## Clearing / rotating the vault
+
+Mappings persist (same original → same surrogate per context). Clear them
+**between sessions, never during one**:
+
+```bash
+python -m anonproxy.reset                 # forget all mappings (same key)
+python -m anonproxy.reset --context acme  # forget one context only
+python -m anonproxy.reset --new-key       # also rotate the key → all-new surrogates
+python -m anonproxy.reset --all --yes     # mappings + key + logs, no prompt
+```
+
+Forgetting with the same key regenerates identical surrogates (a clean-up);
+`--new-key` is a true rotation. `start_proxy.sh` can do it on launch:
+
+```bash
+ANONPROXY_RESET=1       ./start_proxy.sh   # forget mappings
+ANONPROXY_RESET=new-key ./start_proxy.sh   # forget mappings + rotate key
+ANONPROXY_RESET=all     ./start_proxy.sh   # mappings + key + logs
+```
+
+Details and consequences: [docs/USAGE.md](docs/USAGE.md#mappings-persist--clearing-and-rotating).
+
 ## Configuration (env)
 
 | Variable | Default | Meaning |
@@ -188,6 +211,7 @@ same IP maps to different surrogates in different contexts).
 | `ANONPROXY_ISOLATION` | `warn` | `warn` / `enforce` / `off` (see THREAT-MODEL) |
 | `ANONPROXY_UI` | `true` | serve the live dashboard at `/ui` |
 | `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | reveal real values in the dashboard |
+| `ANONPROXY_RESET` | _(unset)_ | `start_proxy.sh` only: `1` forget mappings · `new-key` also rotate key · `all` + logs |
 
 ## Limitations
 
