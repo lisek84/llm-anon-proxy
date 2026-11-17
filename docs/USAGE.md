@@ -63,11 +63,26 @@ names, internal hostnames, service accounts, sensitive paths. Identifiers like
 domains/IPs/emails can be seeded automatically:
 
 ```bash
-python scripts/gen_dictionary.py --from .env --from /etc/nginx/conf.d/app.conf --hostname --git
+# pipe anything in, one section at a time — prints YAML to stdout
+cat /etc/hosts        | python -m anonproxy.gendict ips
+cat /etc/hosts        | python -m anonproxy.gendict hosts
+cat .env app.conf     | python -m anonproxy.gendict domains   # public domains dropped
+
+# everything it can detect, from files or stdin
+python -m anonproxy.gendict all /etc/nginx/sites-enabled/*
+
+# scan this machine's usual sources (hosts, nginx/apache/haproxy, ssh config,
+# /etc/passwd, .env) and build a starting dictionary
+python -m anonproxy.gendict auto
+
+# append straight into your dictionary (dedupes, keeps existing sections)
+cat /etc/hosts | python -m anonproxy.gendict ips --merge dictionary.yaml
 ```
 
-It writes `dictionary.generated.yaml` (never touches your real file) with only
-identifiers — **never secrets**. Review and merge.
+It emits **identifiers only — never secrets**, and for domains it drops public
+tooling (github.com, docker.io, …) so you capture only your own infrastructure
+(`--keep-known` to keep them). Review before relying on it. `scripts/gen_dictionary.py`
+still works as a wrapper around the same tool.
 
 Edits are picked up on proxy restart.
 

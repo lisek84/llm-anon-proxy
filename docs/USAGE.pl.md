@@ -65,11 +65,26 @@ marek/projektów, wewnętrzne nazwy hostów, konta usługowe, wrażliwe ścieżk
 Identyfikatory typu domeny/IP/e-maile można zasiać automatycznie:
 
 ```bash
-python scripts/gen_dictionary.py --from .env --from /etc/nginx/conf.d/app.conf --hostname --git
+# wrzuć cokolwiek na wejście, jedna sekcja na raz — wypisuje YAML na stdout
+cat /etc/hosts        | python -m anonproxy.gendict ips
+cat /etc/hosts        | python -m anonproxy.gendict hosts
+cat .env app.conf     | python -m anonproxy.gendict domains   # publiczne domeny pomijane
+
+# wszystko, co wykryje, z plików albo stdin
+python -m anonproxy.gendict all /etc/nginx/sites-enabled/*
+
+# przeskanuj typowe źródła na tej maszynie (hosts, nginx/apache/haproxy, ssh config,
+# /etc/passwd, .env) i zbuduj startowy słownik
+python -m anonproxy.gendict auto
+
+# dopisz prosto do słownika (odduplikowuje, zachowuje istniejące sekcje)
+cat /etc/hosts | python -m anonproxy.gendict ips --merge dictionary.yaml
 ```
 
-Zapisuje `dictionary.generated.yaml` (nigdy nie rusza Twojego prawdziwego pliku) z
-samymi identyfikatorami — **nigdy sekretami**. Przejrzyj i scal.
+Wypisuje **tylko identyfikatory — nigdy sekrety**, a przy domenach odrzuca
+publiczne narzędzia (github.com, docker.io, …), żebyś łapał tylko własną
+infrastrukturę (`--keep-known` by je zostawić). Przejrzyj przed użyciem.
+`scripts/gen_dictionary.py` nadal działa jako nakładka na to samo narzędzie.
 
 Zmiany są wczytywane przy restarcie proxy.
 

@@ -78,7 +78,8 @@ sensitive paths. These are the deterministic first layer; listing a registrable
 domain also covers its subdomains. You can seed identifiers from local files:
 
 ```bash
-python scripts/gen_dictionary.py --from .env --hostname --git   # review, then merge
+cat /etc/hosts | python -m anonproxy.gendict ips --merge dictionary.yaml  # pipe-friendly
+python -m anonproxy.gendict auto                                          # scan this machine
 ```
 
 ## Run

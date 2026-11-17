@@ -62,8 +62,9 @@ Then fill in `dictionary.yaml` — see [USAGE.md](USAGE.md). You can seed it fro
 local files:
 
 ```bash
-python scripts/gen_dictionary.py --from .env --hostname --git
-# review dictionary.generated.yaml, merge what you want into dictionary.yaml
+python -m anonproxy.gendict auto                                         # scan this machine
+cat /etc/hosts | python -m anonproxy.gendict ips --merge dictionary.yaml  # or pipe specifics in
+# review dictionary.yaml afterwards — it emits identifiers only, never secrets
 ```
 
 The regex + dictionary layers work on their own. The Ollama layer below is only

@@ -62,8 +62,9 @@ Potem uzupełnij `dictionary.yaml` — zobacz [USAGE.pl.md](USAGE.pl.md). Możes
 zasiać go z lokalnych plików:
 
 ```bash
-python scripts/gen_dictionary.py --from .env --hostname --git
-# przejrzyj dictionary.generated.yaml, scal to, co chcesz, do dictionary.yaml
+python -m anonproxy.gendict auto                                         # przeskanuj maszynę
+cat /etc/hosts | python -m anonproxy.gendict ips --merge dictionary.yaml  # albo wrzuć konkrety
+# przejrzyj potem dictionary.yaml — wypisuje tylko identyfikatory, nigdy sekrety
 ```
 
 Warstwy regex + słownik działają samodzielnie. Warstwa Ollama poniżej jest
