@@ -22,11 +22,13 @@ services:
     container_name: anonproxy
     ports:
       - "127.0.0.1:8787:8787"        # loopback only on the host
-    # Run as a non-root user. Default to 1000:1000 (the usual first host user, who
-    # owns ./data); override to match your host user:  ANONPROXY_UID=$(id -u)
-    # ANONPROXY_GID=$(id -g) docker compose up -d. Running as the host user avoids
-    # the bind-mount ownership problem while keeping the process out of root.
-    user: "${ANONPROXY_UID:-1000}:${ANONPROXY_GID:-1000}"
+    # Run as a DEDICATED non-root, non-login UID (default 991) — deliberately NOT
+    # the host user that runs Claude Code. The vault in ./data is 0700, so a
+    # separate owner is what actually keeps the agent's user from reading
+    # mappings.db / secret.key and reversing the anonymization. Create ./data
+    # owned by this UID first (see INSTALL). Do NOT set this to $(id -u): that
+    # re-grants your Claude Code user access to the vault and defeats isolation.
+    user: "${ANONPROXY_UID:-991}:${ANONPROXY_GID:-991}"
     cap_drop: [ALL]                   # the proxy needs no Linux capabilities
     security_opt:
       - no-new-privileges:true        # block setuid privilege escalation

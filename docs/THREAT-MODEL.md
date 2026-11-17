@@ -44,8 +44,13 @@ increasing order of strength:
    sudo bash scripts/setup-isolated-user.sh
    ```
 
-2. **A container** — Ollama and/or the proxy in Docker, data in a volume the
-   host user does not mount. Claude Code on the host reaches only the port.
+2. **A container** — Ollama and/or the proxy in Docker. This isolates **only if
+   the vault is not readable by the host user that runs Claude Code**. The
+   bundled compose runs the container as a dedicated UID (991) and the `./data`
+   bind mount is `0700`, owned by that UID — so the agent's user can't read
+   `mappings.db`/`secret.key`. It stops isolating the moment you `chown` the data
+   to yourself or set `ANONPROXY_UID=$(id -u)`; a bind mount the host user owns
+   gives no isolation at all.
 
 3. **A separate WSL distro** — run the proxy in a second distro; the agent in
    your working distro sees only `127.0.0.1:8787` (or the mapped port).

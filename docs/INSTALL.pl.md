@@ -15,11 +15,12 @@ zapisywany jest obok pliku compose.
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # potem uzupełnij SWOIMI wartościami
 
-# Kontener działa jako użytkownik nie-root; utwórz katalog data jako TY, żeby mógł
-# zapisać vault (inaczej Docker może stworzyć ./data jako root:root i start padnie).
-# Przekaż swój uid/gid, by kontener pasował do właściciela bind-mountu.
-mkdir -p data && chmod 700 data
-export ANONPROXY_UID="$(id -u)" ANONPROXY_GID="$(id -g)"
+# Kontener działa jako DEDYKOWANY UID (991), celowo NIE Twój użytkownik — to ten
+# osobny właściciel katalogu vaulta (0700) powstrzymuje agenta Claude Code
+# (działającego jako Ty) od odczytu mappings.db / secret.key. Utwórz ./data jako
+# ten UID (raz z sudo). NIE mapuj kontenera na $(id -u) — to znosi izolację.
+# Nadpisuj tylko na inny UID spoza agenta:  ANONPROXY_UID=… ANONPROXY_GID=…
+sudo install -d -o 991 -g 991 -m 0700 data
 
 docker compose up -d                           # buduje + startuje proxy (słownik + regex)
 ```
@@ -43,10 +44,15 @@ Następnie w konsoli roboczej:
   `docker compose exec proxy python -m anonproxy.rotate` (oraz `… anonproxy.audit`).
 * Pokaż prawdziwe wartości w dashboardzie: `ANONPROXY_UI_SHOW_ORIGINALS=true docker compose up -d`.
 * Zatrzymanie: `docker compose down` (dodaj `--profile llm`, jeśli uruchamiałeś warstwę LLM).
-* Uwaga o izolacji: `./data` na hoście zawiera vault do deanonimizacji. Kontener
-  zapisuje go jako root, ale dla prawdziwej izolacji uruchom Dockera na innym
-  hoście/użytkowniku niż Claude Code albo trzymaj `./data` nieczytelne dla
-  użytkownika agenta. Zobacz [THREAT-MODEL.pl.md](THREAT-MODEL.pl.md).
+* Uwaga o izolacji: `./data` na hoście zawiera vault do deanonimizacji
+  (`mappings.db`, `secret.key`). Kontener działa jako dedykowany UID (991), a
+  katalog ma 0700 — więc agent Claude Code, działający jako *Twój* użytkownik, go
+  nie odczyta. To działa tylko, jeśli tak zostawisz: nie rób `chown ./data` na
+  siebie i nie ustawiaj `ANONPROXY_UID=$(id -u)`. Mocniejszą granicą jest
+  uruchomienie proxy w **innej dystrybucji WSL / użytkowniku / hoście** niż Claude
+  Code. Słownik (`./dictionary.yaml`) też zawiera Twoje prawdziwe wartości —
+  trzymaj go nieczytelnym dla użytkownika agenta, jeśli to dla Ciebie istotne.
+  Zobacz [THREAT-MODEL.pl.md](THREAT-MODEL.pl.md).
 
 Reszta tej strony to ścieżka **natywna** (bez Dockera).
 

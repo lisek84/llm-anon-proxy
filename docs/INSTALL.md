@@ -15,11 +15,12 @@ state is written next to the compose file.
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # then edit with YOUR values
 
-# The container runs as a non-root user; create the data dir as YOU so it can
-# write the vault (otherwise Docker may create ./data as root:root and startup
-# fails). Pass your uid/gid so the container matches the bind-mount owner.
-mkdir -p data && chmod 700 data
-export ANONPROXY_UID="$(id -u)" ANONPROXY_GID="$(id -g)"
+# The container runs as a DEDICATED UID (991), deliberately NOT your user —
+# that separate owner on the 0700 vault dir is what keeps the Claude Code agent
+# (running as you) from reading mappings.db / secret.key. Create ./data owned by
+# it (needs sudo once). Do NOT remap the container to $(id -u): that defeats the
+# isolation. Override only to another NON-agent uid:  ANONPROXY_UID=… ANONPROXY_GID=…
+sudo install -d -o 991 -g 991 -m 0700 data
 
 docker compose up -d                           # builds + starts the proxy (dict + regex)
 ```
@@ -43,10 +44,15 @@ Then in your working console:
   `docker compose exec proxy python -m anonproxy.rotate` (and `… anonproxy.audit`).
 * Show real values in the dashboard: `ANONPROXY_UI_SHOW_ORIGINALS=true docker compose up -d`.
 * Stop: `docker compose down` (add `--profile llm` if you started the LLM layer).
-* Isolation note: `./data` on the host holds the de-anonymization vault. The
-  container writes it as root, but for real isolation run Docker on a different
-  host/user from Claude Code, or keep `./data` unreadable by the agent's user.
-  See [THREAT-MODEL.md](THREAT-MODEL.md).
+* Isolation note: `./data` on the host holds the de-anonymization vault
+  (`mappings.db`, `secret.key`). The container runs as a dedicated UID (991) and
+  the dir is 0700, so the Claude Code agent — running as *your* user — can't read
+  it. This only holds if you keep it that way: don't `chown` `./data` to yourself
+  and don't set `ANONPROXY_UID=$(id -u)`. Running the proxy in a **different WSL
+  distro / user / host** from Claude Code is the stronger boundary. The
+  dictionary (`./dictionary.yaml`) holds your real values too — keep it
+  unreadable by the agent's user if that matters to you. See
+  [THREAT-MODEL.md](THREAT-MODEL.md).
 
 The rest of this page is the **native** path (no Docker).
 
