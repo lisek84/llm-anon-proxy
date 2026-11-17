@@ -60,6 +60,16 @@ wartość i tak wygrywa pierwsza, więc wpisanie zarówno `keywords: example`, j
 `domains: example.com` sprawia, że pełna domena jest traktowana jako domena
 (`cdn3.example.com`), a gołe `/var/www/example` używa zamiennika słowa kluczowego.
 
+Strona i jej subdomeny **współdzielą jedną bazę zamiennika**, więc model nadal
+widzi, że to ta sama strona — podmieniana jest tylko część rejestrowalna, a
+sub-labele (`www`, `api`, `status`…) zostają:
+
+```
+shop.pl         → ab-cd.example
+www.shop.pl     → www.ab-cd.example
+status.shop.pl  → status.ab-cd.example
+```
+
 Co tu wpisywać: rzeczy wysokiej wartości, których skan nie wywnioskuje — nazwy
 marek/projektów, wewnętrzne nazwy hostów, konta usługowe, wrażliwe ścieżki.
 Identyfikatory typu domeny/IP/e-maile można zasiać automatycznie:
@@ -150,6 +160,10 @@ python -m anonproxy.reset --all --yes     # mapowania + klucz + logi, bez pytani
   nowy zamiennik — prawdziwa rotacja wartości anonimizacyjnych.
 * Przełączenie `ANONPROXY_CONTEXT` daje świeżą przestrzeń zamienników bez
   kasowania czegokolwiek.
+* Po **aktualizacji proxy** (logika zamienników może się zmienić — np. subdomeny
+  współdzielą teraz bazę) zwykły reset przemapowuje już zapisane wartości na nowy
+  schemat. Zamienniki apexów się nie zmieniają; przesuwają się tylko wpisy, których
+  to dotyczy (subdomeny). Bez resetu wartości już w vaulcie zachowują stary zamiennik.
 
 `start_proxy.sh` może zresetować przy starcie (najpierw zatrzymaj proxy, by zadziałało czysto):
 

@@ -58,6 +58,16 @@ listing both `keywords: example` and `domains: example.com` keeps a full domain
 handled as a domain (`cdn3.example.com`) while a bare `/var/www/example` uses
 the keyword surrogate.
 
+A site and its subdomains **share one base surrogate**, so the model can still
+tell they are the same site — only the registrable name is swapped, the
+sub-labels (`www`, `api`, `status`…) are kept:
+
+```
+shop.pl         → ab-cd.example
+www.shop.pl     → www.ab-cd.example
+status.shop.pl  → status.ab-cd.example
+```
+
 What to put here: the high-value things a scan cannot infer — brand/project
 names, internal hostnames, service accounts, sensitive paths. Identifiers like
 domains/IPs/emails can be seeded automatically:
@@ -148,6 +158,10 @@ python -m anonproxy.reset --all --yes     # mappings + key + logs, no prompt
   brand-new surrogate — a true rotation of the anonymization values.
 * Switching `ANONPROXY_CONTEXT` gives a fresh surrogate space without deleting
   anything.
+* After **upgrading the proxy** (surrogate logic can change — e.g. subdomains
+  now share a base) a plain reset re-maps already-stored values to the new
+  scheme. Apex surrogates are unchanged; only the affected entries (subdomains)
+  move. Without a reset, values already in the vault keep their old surrogate.
 
 `start_proxy.sh` can reset on launch (stop the proxy first, so this runs cleanly):
 
