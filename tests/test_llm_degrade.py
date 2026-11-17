@@ -85,6 +85,23 @@ def test_empty_entities_is_a_normal_empty_result():
     assert llm_detector._parse_entities('{"entities":[]}', "text") == []
 
 
+@pytest.mark.parametrize("payload", [
+    {"message": None},                 # 200 OK but message is null → AttributeError before
+    {},                                # no message key
+    {"message": {"content": 123}},     # content not a string
+    {"message": "oops"},               # message not an object
+    "not even a dict",
+])
+def test_malformed_ollama_200_is_llm_unavailable(payload):
+    with pytest.raises(llm_detector.LLMUnavailable):
+        llm_detector._message_content(payload)
+
+
+def test_valid_ollama_message_content_returned():
+    assert llm_detector._message_content({"message": {"content": '{"entities":[]}'}}) \
+        == '{"entities":[]}'
+
+
 def test_malformed_entity_element_raises():
     # A non-string field or a missing `type` is a detector malfunction — raise
     # (so fail-closed blocks) instead of treating it as "nothing found".

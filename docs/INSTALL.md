@@ -14,6 +14,13 @@ state is written next to the compose file.
 ```bash
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # then edit with YOUR values
+
+# The container runs as a non-root user; create the data dir as YOU so it can
+# write the vault (otherwise Docker may create ./data as root:root and startup
+# fails). Pass your uid/gid so the container matches the bind-mount owner.
+mkdir -p data && chmod 700 data
+export ANONPROXY_UID="$(id -u)" ANONPROXY_GID="$(id -g)"
+
 docker compose up -d                           # builds + starts the proxy (dict + regex)
 ```
 

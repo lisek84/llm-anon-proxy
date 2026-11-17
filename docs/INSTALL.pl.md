@@ -14,6 +14,13 @@ zapisywany jest obok pliku compose.
 ```bash
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # potem uzupełnij SWOIMI wartościami
+
+# Kontener działa jako użytkownik nie-root; utwórz katalog data jako TY, żeby mógł
+# zapisać vault (inaczej Docker może stworzyć ./data jako root:root i start padnie).
+# Przekaż swój uid/gid, by kontener pasował do właściciela bind-mountu.
+mkdir -p data && chmod 700 data
+export ANONPROXY_UID="$(id -u)" ANONPROXY_GID="$(id -g)"
+
 docker compose up -d                           # buduje + startuje proxy (słownik + regex)
 ```
 

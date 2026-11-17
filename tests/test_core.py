@@ -93,6 +93,14 @@ def test_subdomain_mask_policy_hides_labels(monkeypatch):
     assert sub == surrogates.generate("prod-db01.acme.pl", "DOMAIN")  # deterministic
 
 
+def test_subdomain_mask_constant_length(monkeypatch):
+    # The masked label must not leak the original name's length.
+    monkeypatch.setattr(config, "SUBDOMAIN_POLICY", "mask")
+    short = surrogates.generate("vpn.acme.pl", "DOMAIN").split(".")[0]
+    long = surrogates.generate("prod-db-server-01.acme.pl", "DOMAIN").split(".")[0]
+    assert len(short) == len(long) == 8
+
+
 def test_bare_brand_replaced():
     anon, back = rt("deploy aplikacji example na prod")
     assert "example" not in anon

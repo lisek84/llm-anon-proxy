@@ -70,14 +70,29 @@ async def detect(text: str) -> list[tuple[str, str]]:
                 },
             )
             resp.raise_for_status()
-            raw = resp.json().get("message", {}).get("content", "")
+            payload = resp.json()
     except httpx.HTTPError as exc:
         # ANY transport/HTTP failure (connect, timeout, HTTP 500, …) means the
         # LLM layer is not functioning — treat it as unavailable so fail-closed
         # actually blocks, instead of silently degrading to regex+dict.
         raise LLMUnavailable(str(exc)) from exc
+    except (ValueError, TypeError) as exc:            # resp.json() on a non-JSON body
+        raise LLMUnavailable(f"Ollama returned a non-JSON response: {exc}") from exc
+
+    raw = _message_content(payload)
 
     return _parse_entities(raw, text)
+
+
+def _message_content(payload) -> str:
+    """Pull message.content as a string, or raise LLMUnavailable. A 200 with a
+    malformed shape ({"message": null}, non-string content, …) must become a
+    controlled LLMUnavailable, not an AttributeError that bypasses both the
+    fail-closed block and the fail-open degrade+notice path."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("message"), dict) \
+            or not isinstance(payload["message"].get("content"), str):
+        raise LLMUnavailable("Ollama response missing a string message.content")
+    return payload["message"]["content"]
 
 
 def _parse_entities(raw: str, text: str) -> list[tuple[str, str]]:

@@ -62,6 +62,8 @@ environment and writes all state next to the compose file:
 ```bash
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml   # edit with YOUR values
+mkdir -p data && chmod 700 data              # the non-root container writes here
+export ANONPROXY_UID="$(id -u)" ANONPROXY_GID="$(id -g)"
 docker compose up -d                         # proxy (dict + regex); add: --profile llm for Ollama
 ./claude_anon                                # in your working console
 ```

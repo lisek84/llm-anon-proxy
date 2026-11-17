@@ -120,8 +120,10 @@ def _fake_domain(original: str, attempt: int) -> str:
 
 
 def _mask_label(base: str, label: str) -> str:
+    # Fixed length (not len(label)) so the surrogate leaks neither the name nor
+    # its length — a short "vpn" and a long "prod-db01" both map to 8 chars.
     d = _digest("SUBLABEL", f"{base}|{label}", 0)
-    return _rand_from(d, _LOWER_DIGITS, max(4, min(len(label), 10)))
+    return _rand_from(d, _LOWER_DIGITS, 8)
 
 
 def _fake_hostname(original: str, attempt: int) -> str:
