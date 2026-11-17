@@ -188,6 +188,25 @@ async def test_document_text_and_tool_description_anonymized():
 
 
 @pytest.mark.asyncio
+async def test_messages_blocks_when_anonymization_raises_even_fail_open(monkeypatch):
+    # Invariant: if _anon_body ever raises LLMUnavailable, the original body must
+    # NEVER be forwarded — block it, regardless of the fail-open preference.
+    from anonproxy import main, llm_detector
+    monkeypatch.setattr(config, "LLM_FAIL_CLOSED", False)
+
+    async def _boom(_b):
+        raise llm_detector.LLMUnavailable("ollama down")
+
+    monkeypatch.setattr(main, "_anon_body", _boom)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        r = await client.post("/v1/messages",
+                              json={"model": "m", "messages": [
+                                  {"role": "user", "content": "secret of-prod-db01"}]})
+    assert r.status_code == 503 and "anonymizer_blocked" in r.text
+
+
+@pytest.mark.asyncio
 async def test_passthrough_bodyless_get_emits_notice_and_scans_query():
     # An unknown endpoint hit with GET (no body) but a secret in the query must
     # still raise a dashboard notice and be scanned — not silently forwarded.

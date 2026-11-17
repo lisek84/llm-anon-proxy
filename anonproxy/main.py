@@ -423,9 +423,12 @@ async def messages(request: Request) -> Response:
     try:
         body = await _anon_body(body)
     except llm_detector.LLMUnavailable as exc:
-        if config.LLM_FAIL_CLOSED:
-            log.error("LLM unavailable, blocking request: %s", exc)
-            return _llm_down_response()
+        # Fail-open degradation happens INSIDE _llm (it returns [] instead of
+        # raising), so a propagated LLMUnavailable means anonymization did not
+        # complete and `body` is still the un-redacted original. Block it — never
+        # fall through and forward it, regardless of the fail-open preference.
+        log.error("LLM unavailable, blocking request (body not safely anonymized): %s", exc)
+        return _llm_down_response()
     except UnscannableContent as exc:
         return _blocked_response(f"request contains an unscannable '{exc}' block "
                                  "(ANONPROXY_BLOCK_UNSCANNABLE=true)")
@@ -484,9 +487,11 @@ async def count_tokens(request: Request) -> Response:
     headers = _fwd_headers(request)
     try:
         body = await _anon_body(body)
-    except llm_detector.LLMUnavailable:
-        if config.LLM_FAIL_CLOSED:
-            return _llm_down_response()
+    except llm_detector.LLMUnavailable as exc:
+        # See messages(): a propagated LLMUnavailable means the body is not safely
+        # anonymized — block rather than forward the original.
+        log.error("LLM unavailable, blocking count_tokens: %s", exc)
+        return _llm_down_response()
     except UnscannableContent as exc:
         return _blocked_response(f"request contains an unscannable '{exc}' block")
     try:
