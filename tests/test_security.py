@@ -205,3 +205,34 @@ async def test_ui_open_by_default_then_requires_login(tmp_path):
         uiauth.disable()
         assert (await c.get("/ui/stats")).status_code == 200      # open again
     config.DATA_DIR = Path(_MY_DB).parent
+
+
+@pytest.mark.asyncio
+async def test_llm_bad_json_is_unavailable(monkeypatch):
+    config.LLM_ENABLED = True
+
+    class _Resp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"message": {"content": "not json at all {{"}}
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, *a, **k): return _Resp()
+
+    monkeypatch.setattr(llm_detector.httpx, "AsyncClient", _Client)
+    with pytest.raises(llm_detector.LLMUnavailable):
+        await llm_detector.detect("text with an entity DC01 here")
+
+
+@pytest.mark.asyncio
+async def test_unscannable_block_emits_dashboard_notice():
+    from anonproxy import events
+    config.BLOCK_UNSCANNABLE = False
+    before = events.snapshot()["notices"]
+    body = {"model": "m", "messages": [{"role": "user", "content": [
+        {"type": "image", "source": {"type": "base64", "data": "x"}}]}]}
+    await main._anon_body(body)
+    assert events.snapshot()["notices"] > before

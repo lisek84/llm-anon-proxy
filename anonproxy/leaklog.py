@@ -13,6 +13,7 @@ a SHA-256 hash (to dedupe and to let you match it later), and context.
 """
 import hashlib
 import json
+import logging
 import os
 import stat
 import threading
@@ -20,6 +21,7 @@ from datetime import datetime, timezone
 
 from .config import config
 
+log = logging.getLogger("anonproxy.leaklog")
 _lock = threading.Lock()
 _seen_hashes: set[str] = set()
 
@@ -46,7 +48,6 @@ def record(value: str, entity_type: str, category: str, source: str = "") -> Non
     with _lock:
         if dedupe_key in _seen_hashes:
             return
-        _seen_hashes.add(dedupe_key)
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "context": config.CONTEXT_ID,
@@ -56,13 +57,20 @@ def record(value: str, entity_type: str, category: str, source: str = "") -> Non
             "sha256": h,
             "source": source,
         }
-        path = config.LEAKLOG_PATH
-        path.parent.mkdir(parents=True, exist_ok=True)
-        new_file = not path.exists()
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        if new_file:
-            _ensure_perms(path)
+        # Best-effort: a failed write must never break the request path, and the
+        # value is marked seen only AFTER a successful write so a later attempt
+        # can still record it.
+        try:
+            path = config.LEAKLOG_PATH
+            path.parent.mkdir(parents=True, exist_ok=True)
+            new_file = not path.exists()
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            if new_file:
+                _ensure_perms(path)
+            _seen_hashes.add(dedupe_key)
+        except OSError:
+            log.exception("non-fatal: could not write rotation log")
 
 
 # Entity types considered "secret-shaped" and worth rotating.

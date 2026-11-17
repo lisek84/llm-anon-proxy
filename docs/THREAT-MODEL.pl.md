@@ -167,6 +167,14 @@ rotacji), nie pełna **weryfikacja prywatności**: gołej nazwy hosta typu
 `prod-db-01`, której nie złapał słownik ani LLM, nie oflaguje. Aby zweryfikować
 pokrycie własnych wartości przed sesją, użyj `python -m anonproxy.preview`.
 
+Gdy treść jest przekazywana **bez** anonimizacji — blok image/binarny document lub
+nieznany endpoint — każde wystąpienie pojawia się na dashboardzie (czerwony wiersz
+`UNANON` i licznik) oraz w logu, więc cicha niezanonimizowana transmisja nie
+przejdzie niezauważona. Przypadek błędnej odpowiedzi LLM też jest teraz
+fail-closed: niesparsowalna lub strukturalnie zła odpowiedź Ollamy rzuca
+`LLMUnavailable` (tylko poprawne `{"entities": []}` liczy się jako „nic nie
+znaleziono").
+
 ## Detekcja jest wartościowa, nie pozycyjna
 
 Regex decyduje per *wartość*, nie per wystąpienie, a anonimizator podmienia potem

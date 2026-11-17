@@ -77,14 +77,20 @@ async def detect(text: str) -> list[tuple[str, str]]:
         # actually blocks, instead of silently degrading to regex+dict.
         raise LLMUnavailable(str(exc)) from exc
 
+    # A valid {"entities": []} is a normal "nothing found" result; an unparseable
+    # or malformed response is a DETECTOR FAILURE, not an empty result — raise so
+    # fail-closed blocks instead of silently trusting regex+dict alone.
     try:
         data = json.loads(_extract_json(raw))
-    except (ValueError, json.JSONDecodeError):
-        log.debug("LLM returned unparseable JSON")
-        return []
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise LLMUnavailable(f"LLM returned unparseable JSON: {exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("entities", []), list):
+        raise LLMUnavailable("LLM response has no valid 'entities' list")
 
     out: list[tuple[str, str]] = []
-    for e in data.get("entities", []):
+    for e in data["entities"]:
+        if not isinstance(e, dict):
+            continue
         val = (e.get("text") or "").strip()
         etype = (e.get("type") or "").strip().upper()
         if val and val in text and etype in _ALLOWED:

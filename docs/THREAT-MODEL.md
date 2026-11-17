@@ -165,6 +165,13 @@ present), not full **privacy verification**: a plain host like `prod-db-01` that
 no dictionary or LLM match caught will not be flagged by it. To verify coverage
 of your own values before a session, use `python -m anonproxy.preview`.
 
+Whenever content is forwarded **without** anonymization — an image or binary
+document block, or an unknown endpoint — every occurrence is surfaced on the
+dashboard (a red `UNANON` row and a counter) and logged, so a silent
+un-anonymized transmission cannot go unnoticed. The malformed-LLM-response case
+is also fail-closed now: an unparseable or structurally-wrong Ollama reply raises
+`LLMUnavailable` (only a valid `{"entities": []}` counts as "nothing found").
+
 ## Detection is value-based, not positional
 
 Regex detection decides per *value*, not per occurrence, and the anonymizer then

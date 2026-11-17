@@ -38,6 +38,21 @@ def emit_request(model: str, restored: int) -> None:
         })
 
 
+_notices = 0
+
+
+def emit_notice(message: str, detail: str = "") -> None:
+    """Something was forwarded WITHOUT anonymization (unscannable block, unknown
+    endpoint). Surfaced on the dashboard and counted, once per occurrence."""
+    global _notices
+    with _lock:
+        _notices += 1
+        _events.append({
+            "id": next(_counter), "kind": "notice", "ts": time.time(),
+            "message": message, "detail": detail,
+        })
+
+
 def since(after_id: int) -> list[dict]:
     with _lock:
         return [e for e in _events if e["id"] > after_id]
@@ -49,6 +64,7 @@ def snapshot(limit: int = 200) -> dict:
         return {
             "stats": dict(_stats),
             "requests": _requests,
+            "notices": _notices,
             "last_id": _events[-1]["id"] if _events else 0,
             "recent": recent,
         }

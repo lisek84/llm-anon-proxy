@@ -85,3 +85,10 @@ async def test_server_tool_use_input_is_emitted_and_restored():
                 tool_json += evt["delta"]["partial_json"]
     assert tool_json, "server_tool_use input was dropped"
     assert json.loads(tool_json)["query"] == "status of 10.1.2.3"
+
+
+def test_deanon_tool_json_restores_keys():
+    # Streaming tool_use must restore surrogate KEYS too (symmetric with anonymize_value).
+    vault.get_or_create("secret-host.internal", "HOSTNAME", lambda o, e, a: "host-zzz999")
+    restored, _ = main._deanon_tool_json('{"host-zzz999": "up"}')
+    assert json.loads(restored) == {"secret-host.internal": "up"}

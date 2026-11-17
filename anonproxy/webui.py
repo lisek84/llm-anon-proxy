@@ -127,7 +127,7 @@ _PAGE = r"""<!DOCTYPE html>
 <header>
   <div class="title"><span id="dot" class="dot"></span><b>anonproxy</b> · live activity</div>
   <div class="sub">context <span id="ctx">…</span> · <span id="reqs">0</span> requests ·
-       <span id="total">0</span> values caught · <label><input type="checkbox" id="auto" checked> follow</label></div>
+       <span id="total">0</span> values caught · <span id="notices" style="color:#ff6b6b"></span><label><input type="checkbox" id="auto" checked> follow</label></div>
   <div class="chips" id="chips"></div>
 </header>
 <div id="banner"></div>
@@ -141,14 +141,15 @@ const COLORS={IP_ADDRESS:'#f98181',CIDR:'#f98181',DOMAIN:'#f6a560',HOSTNAME:'#ff
   KEYWORD:'#b6e36b',CREDENTIAL:'#ff6b6b',TOKEN:'#ff8f6b',HASH:'#ffb36b',PATH:'#6be3c0',
   MAC_ADDRESS:'#f6a560',URL:'#79a9ff',ENCODED_B64:'#9aa5ff',ENCODED_B32:'#9aa5ff',
   ENCODED_HEX:'#9aa5ff',URL_ENCODED:'#9aa5ff',JSON_ESCAPED:'#9aa5ff',OTHER:'#9aa'};
-const stats={}; let reqs=0, total=0, empty=document.getElementById('empty');
+const stats={}; let reqs=0, total=0, notices=0, empty=document.getElementById('empty');
 function color(t){return COLORS[t]||'#9aa'}
 function fmtTs(s){const d=new Date(s*1000);return d.toLocaleTimeString([], {hour12:false})}
 function renderChips(){chipsEl.innerHTML=Object.entries(stats).sort((a,b)=>b[1]-a[1])
   .map(([t,n])=>`<span class="chip" style="border-color:${color(t)}55">
      <b style="color:${color(t)}">${t.toLowerCase()}</b> ${n}</span>`).join('');
   document.getElementById('total').textContent=total;
-  document.getElementById('reqs').textContent=reqs;}
+  document.getElementById('reqs').textContent=reqs;
+  document.getElementById('notices').textContent=notices?('⚠ '+notices+' un-anonymized · '):'';}
 function trim(){while(log.children.length>600)log.removeChild(log.firstChild);}
 function add(e){
   if(empty){empty.remove();empty=null;}
@@ -158,6 +159,12 @@ function add(e){
     div.innerHTML=`<span class="ts">${fmtTs(e.ts)}</span>
       <span>↳ request handled (model ${e.model||'?'}, restored ${e.restored})</span>`;
     reqs++;
+  }else if(e.kind==='notice'){
+    div.className='row';
+    div.innerHTML=`<span class="ts">${fmtTs(e.ts)}</span>
+      <span class="type" style="background:#ff6b6b22;color:#ff6b6b;border:1px solid #ff6b6b55">UNANON</span>
+      <span class="orig" style="color:#ff9f9f">⚠ ${escapeHtml(e.message)} ${e.detail?('['+escapeHtml(e.detail)+']'):''}</span>`;
+    notices++;
   }else{
     const c=color(e.type);
     div.className='row';

@@ -113,13 +113,16 @@ class UnscannableContent(Exception):
     """Raised for a block the proxy can't scrub when BLOCK_UNSCANNABLE is on."""
 
 
-def _warn_unanonymized(kind: str) -> None:
+def _warn_unanonymized(kind: str, source: str = "message") -> None:
     if config.BLOCK_UNSCANNABLE:
         raise UnscannableContent(kind)
+    # Every occurrence is surfaced on the dashboard (the whole point: the user
+    # must know data left un-anonymized); the log warns once per type to stay quiet.
+    events.emit_notice(f"forwarded un-anonymized {kind} block", source)
     if kind not in _warned_block_types:
         _warned_block_types.add(kind)
         log.warning("'%s' blocks are NOT anonymized — their payload is forwarded "
-                    "as-is (logged once per type)", kind)
+                    "as-is (dashboard shows every occurrence)", kind)
 
 
 async def _anon_block(block: dict, source: str) -> dict:
@@ -252,7 +255,10 @@ def _deanon_tool_json(raw: str) -> tuple[str, set[str]]:
             restored.update(r)
             return out
         if isinstance(o, dict):
-            return {k: walk(v) for k, v in o.items()}
+            # Restore keys too — anonymize_value anonymizes them, so streaming
+            # tool_use must be symmetric or a surrogate key reaches the tool.
+            return {(anonymizer.deanonymize(k) if isinstance(k, str) else k): walk(v)
+                    for k, v in o.items()}
         if isinstance(o, list):
             return [walk(v) for v in o]
         return o
@@ -371,10 +377,13 @@ async def messages(request: Request) -> Response:
         return _blocked_response(f"request contains an unscannable '{exc}' block "
                                  "(ANONPROXY_BLOCK_UNSCANNABLE=true)")
 
-    leaks = anonymizer.scan_body_for_leaks(body, "messages")
-    if leaks:
-        log.warning("%d rotation-worthy secret(s) still present in outgoing body "
-                    "(recorded as 'leaked')", leaks)
+    try:
+        leaks = anonymizer.scan_body_for_leaks(body, "messages")
+        if leaks:
+            log.warning("%d rotation-worthy secret(s) still present in outgoing body "
+                        "(recorded as 'leaked')", leaks)
+    except Exception:  # noqa: BLE001 - leak scanning must never break the request
+        log.exception("non-fatal: leak scan failed")
 
     model = body.get("model", "?")
 
@@ -427,10 +436,13 @@ async def count_tokens(request: Request) -> Response:
             return _llm_down_response()
     except UnscannableContent as exc:
         return _blocked_response(f"request contains an unscannable '{exc}' block")
-    leaks = anonymizer.scan_body_for_leaks(body, "count_tokens")
-    if leaks:
-        log.warning("%d rotation-worthy secret(s) still present in outgoing count_tokens body "
-                    "(recorded as 'leaked')", leaks)
+    try:
+        leaks = anonymizer.scan_body_for_leaks(body, "count_tokens")
+        if leaks:
+            log.warning("%d rotation-worthy secret(s) still present in outgoing count_tokens "
+                        "body (recorded as 'leaked')", leaks)
+    except Exception:  # noqa: BLE001
+        log.exception("non-fatal: leak scan failed")
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(f"{config.UPSTREAM_URL}/v1/messages/count_tokens",
                                  json=body, headers=headers)
@@ -479,6 +491,7 @@ async def passthrough(request: Request, path: str) -> Response:
     if content:
         log.warning("passthrough forwards an un-anonymized %s body for /%s (%d bytes)",
                     request.method, path, len(content))
+        events.emit_notice(f"forwarded un-anonymized request to /{path}", request.method)
         try:
             anonymizer.scan_for_leaks(content.decode("utf-8", "replace"), f"passthrough:{path}")
         except Exception:  # noqa: BLE001

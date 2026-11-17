@@ -138,8 +138,8 @@ def _main() -> int:
         if pw != getpass.getpass("repeat: "):
             print("passwords do not match")
             return 1
-        if len(pw) < 6:
-            print("please use at least 6 characters")
+        if len(pw) < 8:
+            print("please use at least 8 characters")
             return 1
         add_user(args.user, pw)
         print(f"added viewer {args.user!r} — the dashboard now requires login.")
