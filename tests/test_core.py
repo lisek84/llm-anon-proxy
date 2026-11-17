@@ -303,13 +303,45 @@ def test_dsn_password_is_credential_not_email():
     anon = anonymizer.anonymize(text, source="test")
     assert "S3cr3tPASS" not in anon        # password gone
     assert "db.bigfirm.com" not in anon    # host anonymized
-    assert "[CRED_" in anon                # password handled as a credential
+    assert "CRED-" in anon                # password handled as a credential
+
+
+def test_surrogates_are_shell_inert():
+    # A surrogate may reach a shell/path if the model mangles it past the
+    # restorer, so NO surrogate may contain a character that changes a command's
+    # meaning (expansion $, command subst `, separators ; | &, redirection < >,
+    # globs * ? [ ], quotes, whitespace, backslash). Allowed: [A-Za-z0-9._@:/=-].
+    import re as _re
+    allowed = _re.compile(r"^[A-Za-z0-9._@:/=-]+$")
+    cases = [
+        ("DOMAIN", ["example.com", "www.acme-crm.pl", "a.b.c.example.co.uk"]),
+        ("HOSTNAME", ["prod-db01", "x"]),
+        ("IP_ADDRESS", ["51.75.1.2", "2a01:4f8:1c1c:abcd::5", "fd00:1234:5::9"]),
+        ("CIDR", ["51.75.0.0/16", "10.9.0.0/8", "2a01:4f8::/48", "fc00::/7"]),
+        ("EMAIL", ["admin@jesiotr.pl"]),
+        ("USERNAME", ["deploy", "jan.kowalski"]),
+        ("PERSON", ["Jan Kowalski", "Łukasz Żółć"]),
+        ("ORGANIZATION", ["Acme Corp S.A."]),
+        ("KEYWORD", ["secret-project!", "$weird; name"]),
+        ("CREDENTIAL", ["Hunter2pass", "Tr0ub4dor&3", "p@ss$word"]),
+        ("HASH", ["deadbeef" * 4]),
+        ("TOKEN", ["ghp_" + "A" * 36, "sk_live_" + "x" * 24, "random-looking-token-123456"]),
+        ("MAC_ADDRESS", ["aa:bb:cc:dd:ee:ff"]),
+        ("PATH", ["/var/www/secret", "/opt/$HOME/../etc"]),
+    ]
+    for etype, originals in cases:
+        for original in originals:
+            for attempt in range(3):          # collision retries must stay inert too
+                sur = surrogates.generate(original, etype, attempt)
+                assert allowed.match(sur), f"{etype} surrogate {sur!r} has an active char"
+                assert not (set(sur) & set("$`;|&<>()*?[]'\" \t\n\\")), \
+                    f"{etype} surrogate {sur!r} contains a shell metacharacter"
 
 
 def test_p_flag_not_matched_inside_word():
     # The -p credential rule must not fire inside "of-prod-db01".
     anon = anonymizer.anonymize("ssh of_app@of-prod-db01", source="test")
-    assert "[CRED_" not in anon
+    assert "CRED-" not in anon
     assert "of-prod-db01" not in anon  # still replaced as a hostname
 
 

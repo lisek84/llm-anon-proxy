@@ -230,7 +230,7 @@ def _len_class(n: int) -> int:
 def _fake_credential(original: str, attempt: int) -> str:
     d = _digest("CREDENTIAL", original, attempt)
     tag = _rand_from(d, string.ascii_uppercase + string.digits, 10)
-    return f"[CRED_{tag}]"
+    return f"CRED-{tag}"   # no brackets: keep every surrogate shell/glob-inert
 
 
 def _fake_hash(original: str, attempt: int) -> str:
@@ -246,7 +246,7 @@ def _fake_token(original: str, attempt: int) -> str:
             body = _rand_from(d, _ALNUM, max(8, len(original) - len(prefix)))
             return prefix + body
     tag = _rand_from(d, _ALNUM, 24)
-    return f"[TOKEN_{tag}]"
+    return f"TOKEN-{tag}"   # no brackets: keep every surrogate shell/glob-inert
 
 
 def _fake_mac(original: str, attempt: int) -> str:
