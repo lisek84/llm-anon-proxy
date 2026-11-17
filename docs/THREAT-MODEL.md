@@ -148,10 +148,22 @@ Default behaviour favours not breaking Claude Code; these make it strict:
   anonymized `/v1/messages` and `/v1/messages/count_tokens`, instead of
   forwarding it raw.
 * `ANONPROXY_TOKEN=<secret>` — for a non-loopback deployment (separate host/VPS),
-  require the secret as a URL path prefix
-  (`ANTHROPIC_BASE_URL=http://host:8787/<secret>`); requests without it get 403.
-  The proxy still has no per-user auth beyond this, so keep it on loopback or
-  behind the SSH tunnel / firewall otherwise.
+  require the secret either as an `X-Anonproxy-Token` header (preferred — it does
+  not land in URL/access logs) or, for clients that can only set a base URL like
+  Claude Code, as a URL path prefix
+  (`ANTHROPIC_BASE_URL=https://host:8787/<secret>`); requests without it get 403.
+  The proxy still has no per-user auth beyond this, so keep it behind the SSH
+  tunnel / firewall and prefer the header where the client can send one.
+
+The startup preflight checks classic Unix owner/group/mode and directory
+traversal. It does **not** evaluate POSIX ACLs, capabilities, or access via a
+Docker socket or a privileged process — treat it as a backstop, not proof of
+isolation (only the OS/user/host boundary isolates you).
+
+The outgoing leak scan is **leak detection** (rotatable CREDENTIAL/TOKEN still
+present), not full **privacy verification**: a plain host like `prod-db-01` that
+no dictionary or LLM match caught will not be flagged by it. To verify coverage
+of your own values before a session, use `python -m anonproxy.preview`.
 
 ## Detection is value-based, not positional
 

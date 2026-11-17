@@ -136,3 +136,48 @@ def test_tls_explicit_cert_paths_passthrough():
     config.TLS_KEY = "/x/k.pem"
     assert tls.resolve() == ("/x/c.pem", "/x/k.pem")
     config.TLS_CERT = config.TLS_KEY = ""
+
+
+# ── Review #4: audit path hardened, header token, input_schema anonymized ─────
+
+def test_audit_path_in_sensitive_and_hardened(tmp_path):
+    import stat as _stat
+    from anonproxy import preflight
+    config.DATA_DIR = tmp_path
+    config.AUDIT_PATH = tmp_path / "audit.log.jsonl"
+    config.DB_PATH = tmp_path / "t.db"
+    config.SECRET_KEY_PATH = tmp_path / "secret.key"
+    config.DICT_PATH = tmp_path / "dict.yaml"
+    config.LEAKLOG_PATH = tmp_path / "rotate.jsonl"
+    assert config.AUDIT_PATH in preflight._sensitive_paths()
+    config.AUDIT_PATH.write_text("x")
+    os.chmod(config.AUDIT_PATH, 0o644)
+    preflight.harden_permissions()
+    assert _stat.S_IMODE(os.stat(config.AUDIT_PATH).st_mode) == 0o600
+    config.DB_PATH = Path(_MY_DB)
+    config.DICT_PATH = Path(_MY_DICT)
+
+
+@pytest.mark.asyncio
+async def test_token_via_header():
+    config.TOKEN = "hdr123"
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://p") as c:
+        assert (await c.get("/ui/stats")).status_code == 403
+        r = await c.get("/ui/stats", headers={"x-anonproxy-token": "hdr123"})
+        assert r.status_code == 200
+    config.TOKEN = ""
+
+
+@pytest.mark.asyncio
+async def test_tool_input_schema_description_anonymized():
+    body = {"model": "m", "messages": [],
+            "tools": [{"name": "run", "description": "ok",
+                       "input_schema": {"type": "object", "properties": {
+                           "host": {"type": "string",
+                                    "description": "default example.com box"}}}}]}
+    out = await main._anon_body(body)
+    desc = out["tools"][0]["input_schema"]["properties"]["host"]["description"]
+    assert "example.com" not in desc
+    # structure preserved
+    assert out["tools"][0]["input_schema"]["properties"]["host"]["type"] == "string"

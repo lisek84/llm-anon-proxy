@@ -150,10 +150,22 @@ Domyślnie priorytetem jest niełamanie Claude Code; te czynią go rygorystyczny
   anonimizowane `/v1/messages` i `/v1/messages/count_tokens`, zamiast przekazać go
   surowo.
 * `ANONPROXY_TOKEN=<sekret>` — dla wdrożenia poza loopbackiem (osobny host/VPS),
-  wymagaj sekretu jako prefiksu ścieżki
-  (`ANTHROPIC_BASE_URL=http://host:8787/<sekret>`); żądania bez niego dostają 403.
-  Proxy nie ma poza tym uwierzytelniania per-użytkownik, więc poza tym trzymaj je
-  na loopbacku albo za tunelem SSH / firewallem.
+  wymagaj sekretu albo w nagłówku `X-Anonproxy-Token` (zalecane — nie trafia do
+  logów URL/dostępu), albo — dla klientów ustawiających tylko base URL, jak Claude
+  Code — jako prefiks ścieżki (`ANTHROPIC_BASE_URL=https://host:8787/<sekret>`);
+  żądania bez niego dostają 403. Proxy nie ma poza tym uwierzytelniania
+  per-użytkownik, więc trzymaj je za tunelem SSH / firewallem i preferuj nagłówek
+  tam, gdzie klient potrafi go wysłać.
+
+Preflight przy starcie sprawdza klasyczne uniksowe właściciel/grupa/tryb i
+przejście przez katalogi. **Nie** ocenia POSIX ACL, capabilities ani dostępu przez
+Docker socket lub proces uprzywilejowany — traktuj go jako zabezpieczenie
+pomocnicze, nie dowód izolacji (izoluje wyłącznie granica systemu/użytkownika/hosta).
+
+Wychodzący skan wycieków to **wykrywanie wycieków** (pozostałe CREDENTIAL/TOKEN do
+rotacji), nie pełna **weryfikacja prywatności**: gołej nazwy hosta typu
+`prod-db-01`, której nie złapał słownik ani LLM, nie oflaguje. Aby zweryfikować
+pokrycie własnych wartości przed sesją, użyj `python -m anonproxy.preview`.
 
 ## Detekcja jest wartościowa, nie pozycyjna
 

@@ -36,19 +36,25 @@ class IsolationError(RuntimeError):
     pass
 
 
+def _sensitive_files() -> tuple:
+    # AUDIT_PATH holds the full original<->surrogate map, so it is as sensitive
+    # as the vault and must be covered too.
+    return (config.DB_PATH, config.SECRET_KEY_PATH, config.DICT_PATH,
+            config.LEAKLOG_PATH, config.AUDIT_PATH)
+
+
 def _sensitive_paths() -> list:
-    return [config.DATA_DIR, config.DB_PATH, config.SECRET_KEY_PATH,
-            config.DICT_PATH, config.LEAKLOG_PATH]
+    return [config.DATA_DIR, *_sensitive_files()]
 
 
 def harden_permissions() -> None:
-    """data dir -> 0700, sensitive files -> 0600 (best effort)."""
+    """data dir -> 0700, sensitive files -> 0600 (best effort, even if existing)."""
     try:
         if config.DATA_DIR.exists():
             os.chmod(config.DATA_DIR, stat.S_IRWXU)  # 0700
     except OSError as exc:
         log.warning("could not chmod data dir: %s", exc)
-    for p in (config.DB_PATH, config.SECRET_KEY_PATH, config.DICT_PATH, config.LEAKLOG_PATH):
+    for p in _sensitive_files():
         try:
             if p.exists():
                 os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)  # 0600

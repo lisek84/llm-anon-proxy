@@ -36,6 +36,10 @@ class _TokenMiddleware(BaseHTTPMiddleware):
         token = config.TOKEN
         if not token or request.url.path == "/health":
             return await call_next(request)
+        # Preferred: a header (does not land in URL/access logs). Clients that
+        # can only set ANTHROPIC_BASE_URL (Claude Code) use the path prefix.
+        if request.headers.get("x-anonproxy-token") == token:
+            return await call_next(request)
         prefix = f"/{token}"
         path = request.url.path
         if path == prefix or path.startswith(prefix + "/"):
@@ -44,7 +48,7 @@ class _TokenMiddleware(BaseHTTPMiddleware):
             request.scope["raw_path"] = stripped.encode()
             return await call_next(request)
         return Response(content=json.dumps({"type": "error", "error": {
-            "type": "forbidden", "message": "missing or wrong proxy token in path"}}),
+            "type": "forbidden", "message": "missing or wrong proxy token"}}),
             status_code=403, media_type="application/json")
 
 
@@ -170,12 +174,30 @@ async def _anon_body(body: dict) -> dict:
         body["system"] = [await _anon_block(b, "system") for b in sys_p]
     if isinstance(body.get("messages"), list):
         body["messages"] = [await _anon_message(m) for m in body["messages"]]
-    # Tool definitions (esp. MCP) can embed real values in their descriptions.
+    # Tool definitions (esp. MCP) can embed real values in free-text fields —
+    # the top-level description and, nested in input_schema, property
+    # descriptions/titles. Only those free-text fields are anonymized; the JSON
+    # Schema structure (type, property names, required…) is left intact.
     if isinstance(body.get("tools"), list):
         for tool in body["tools"]:
-            if isinstance(tool, dict) and isinstance(tool.get("description"), str):
-                tool["description"] = await _anon_text(tool["description"], "tools")
+            await _anon_schema_text(tool)
     return body
+
+
+_SCHEMA_TEXT_KEYS = {"description", "title"}
+
+
+async def _anon_schema_text(obj) -> None:
+    """Anonymize free-text fields (description/title) anywhere in a tool def."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in _SCHEMA_TEXT_KEYS and isinstance(v, str):
+                obj[k] = await _anon_text(v, "tools")
+            else:
+                await _anon_schema_text(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            await _anon_schema_text(item)
 
 
 # ── Response deanonymization ──────────────────────────────────────────────────
