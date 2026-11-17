@@ -7,12 +7,36 @@ surrounding key. The anonymizer resolves overlaps by replacing longest first.
 """
 import re
 
-# Domains that are tooling/ecosystem, not the user's own infrastructure.
+# Public tooling/ecosystem domains — not the user's own infrastructure, and the
+# model needs them for context (they also fill Claude Code's own system prompt).
+# Covers the domain itself and any subdomain. Your real domains go in the dict.
 _DOMAIN_ALLOWLIST = {
-    "anthropic.com", "claude.com", "claude.ai", "github.com", "githubusercontent.com",
-    "gitlab.com", "pypi.org", "npmjs.com", "debian.org", "ubuntu.com", "python.org",
-    "nmap.org", "example.com", "example.org", "example.net", "localhost",
-    "schema.org", "w3.org", "googleapis.com", "cloudflare.com", "letsencrypt.org",
+    # Anthropic / Claude
+    "anthropic.com", "claude.com", "claude.ai",
+    # code hosting
+    "github.com", "githubusercontent.com", "gitlab.com", "bitbucket.org",
+    "sourceforge.net",
+    # package registries / language ecosystems
+    "pypi.org", "pythonhosted.org", "npmjs.com", "npmjs.org", "jsdelivr.net",
+    "unpkg.com", "crates.io", "rubygems.org", "packagist.org", "nuget.org",
+    "hex.pm", "pub.dev", "golang.org", "go.dev", "rust-lang.org", "nodejs.org",
+    "python.org", "ruby-lang.org", "php.net", "maven.org", "gradle.org",
+    # container registries
+    "docker.io", "docker.com", "ghcr.io", "quay.io", "gcr.io", "registry.k8s.io",
+    "k8s.io", "kubernetes.io", "helm.sh",
+    # linux distros / core projects
+    "debian.org", "ubuntu.com", "canonical.com", "archlinux.org",
+    "fedoraproject.org", "redhat.com", "centos.org", "alpinelinux.org",
+    "kernel.org", "gnu.org", "apache.org", "nginx.org", "nginx.com", "haproxy.org",
+    "postgresql.org", "mariadb.org", "mysql.com", "redis.io", "mongodb.com",
+    "hashicorp.com", "terraform.io", "letsencrypt.org", "openssl.org",
+    # docs / reference / cloud providers (public endpoints)
+    "google.com", "gstatic.com", "googleapis.com", "google.internal",
+    "metadata.google.internal", "cloudflare.com", "amazonaws.com", "azure.com",
+    "microsoft.com", "mozilla.org", "readthedocs.io", "readthedocs.org",
+    "stackoverflow.com", "nmap.org", "schema.org", "w3.org",
+    # placeholders / loopback
+    "example.com", "example.org", "example.net", "localhost",
 }
 
 # Each rule: (entity_type, pattern, group). group 'v' captures the value; 0 = whole.

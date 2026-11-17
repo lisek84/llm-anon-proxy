@@ -106,6 +106,23 @@ def _strip_comment(line: str) -> str:
     return line
 
 
+# Common words / very short tokens that, as a substring-matched dictionary value,
+# wreck normal text. Flagged (not blocked) at load time.
+_RISKY_WORDS = frozenset({
+    "user", "users", "admin", "root", "test", "data", "name", "host", "app",
+    "dev", "prod", "api", "web", "www", "mail", "node", "main", "home", "info",
+    "org", "net", "com", "the", "and", "for", "db", "id", "ip", "os", "pl",
+})
+
+
+def _is_risky_literal(v: str) -> bool:
+    low = v.lower()
+    if low in _RISKY_WORDS:
+        return True
+    # a very short, purely-alphabetic token matches far too much as a substring
+    return len(v) <= 3 and v.isalpha()
+
+
 def _parse_minimal_yaml(text: str) -> dict[str, list[str]]:
     """Parse exactly the shape:  key:\n  - value\n  - value"""
     result: dict[str, list[str]] = {}
@@ -187,6 +204,11 @@ def load(path: Path | None = None) -> None:
                 if v:
                     _entries.append((etype, v))
                     base_values.append(v)
+                    if etype not in ("IP_ADDRESS", "CIDR") and _is_risky_literal(v):
+                        log.warning("dictionary: %r (%s) is short/common and matches as a "
+                                    "SUBSTRING everywhere — it will mangle normal text "
+                                    "(e.g. 'user' hits 'username'). Use a more specific value.",
+                                    v, section)
     # User allowlist: domains/IPs the regex layer should leave intact.
     regex_detector.set_user_allow(allow_values)
 

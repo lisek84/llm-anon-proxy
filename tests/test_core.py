@@ -361,3 +361,18 @@ def test_slack_webhook_token_caught():
     url = "https://hooks.slack.com/services/T000ABC/B111DEF/xoxbFAKE0123456789"
     anon = anonymizer.anonymize(f"webhook: {url}", source="test")
     assert "xoxbFAKE0123456789" not in anon
+
+
+@pytest.mark.parametrize("d", ["docker.io", "ghcr.io", "quay.io", "docs.google.com",
+                               "proxy.golang.org", "registry.k8s.io", "crates.io"])
+def test_common_dev_domains_not_anonymized(d):
+    # These fill Claude Code's own system prompt and are not user infrastructure.
+    assert d in anonymizer.anonymize(f"pull from {d} now", source="t")
+
+
+def test_risky_dictionary_literal_flagged():
+    assert dictionary._is_risky_literal("user")
+    assert dictionary._is_risky_literal("db")
+    assert dictionary._is_risky_literal("api")
+    assert not dictionary._is_risky_literal("acme-crm.pl")
+    assert not dictionary._is_risky_literal("db-prod-01")
