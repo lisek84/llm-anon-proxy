@@ -290,6 +290,40 @@ async def test_passthrough_scans_urlencoded_query(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mcp_tool_blocks_anonymized_and_servers_noticed():
+    from anonproxy import main, events
+    body = {
+        "model": "m",
+        "mcp_servers": [{"type": "url", "url": "https://mcp.example.com/sse",
+                         "name": "internal", "authorization_token": "secrettok"}],
+        "messages": [
+            {"role": "assistant", "content": [
+                {"type": "mcp_tool_use", "id": "m1", "name": "q", "server_name": "internal",
+                 "input": {"host": "of-prod-db01", "ip": "185.12.34.56"}}]},
+            {"role": "user", "content": [
+                {"type": "mcp_tool_result", "tool_use_id": "m1",
+                 "content": "status of of-prod-db01 at 185.12.34.56"}]},
+        ],
+    }
+    before = events.snapshot()["notices"]
+    out = await main._anon_body(body)
+    inp = out["messages"][0]["content"][0]["input"]
+    assert "of-prod-db01" not in inp["host"] and "185.12.34.56" not in inp["ip"]
+    res = out["messages"][1]["content"][0]["content"]
+    assert "of-prod-db01" not in res and "185.12.34.56" not in res
+    assert events.snapshot()["notices"] > before            # mcp_servers surfaced
+
+
+@pytest.mark.asyncio
+async def test_block_mcp_servers_raises(monkeypatch):
+    from anonproxy import main
+    monkeypatch.setattr(config, "BLOCK_MCP_SERVERS", True)
+    with pytest.raises(main.UnscannableContent):
+        await main._anon_body({"model": "m", "messages": [],
+                               "mcp_servers": [{"type": "url", "url": "https://x/sse"}]})
+
+
+@pytest.mark.asyncio
 async def test_inline_tool_addition_block_anonymized():
     # inline-tools beta: a tool declared inside a message as a `tool_addition`
     # block must have its free-text fields scrubbed too (not forwarded as-is),

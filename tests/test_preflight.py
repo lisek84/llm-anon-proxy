@@ -44,16 +44,33 @@ def test_can_read_tristate():
     assert preflight._can_read(f, os.getuid(), set(os.getgroups())) is True
 
 
+def test_numeric_client_uid_same_as_proxy_flagged(monkeypatch):
+    # Container path: identity given numerically. Same uid as the proxy → flagged.
+    monkeypatch.setattr(config, "CLIENT_USER", "")
+    monkeypatch.setattr(config, "CLIENT_UID", os.getuid())
+    monkeypatch.setattr(config, "CLIENT_GIDS", frozenset(os.getgroups()))
+    problems = preflight.check_isolation()
+    assert problems and "SAME uid" in problems[0]
+
+
+def test_numeric_client_uid_foreign_not_flagged_as_readable(monkeypatch):
+    monkeypatch.setattr(config, "CLIENT_USER", "")
+    monkeypatch.setattr(config, "CLIENT_UID", 424242)        # a uid that isn't us
+    monkeypatch.setattr(config, "CLIENT_GIDS", frozenset({434343}))
+    problems = preflight.check_isolation()
+    assert not any("can read" in p for p in problems)        # foreign uid can't read our files
+
+
 def test_same_user_is_flagged():
     config.CLIENT_USER = _me()
     problems = preflight.check_isolation()
-    assert problems and "SAME user" in problems[0]
+    assert problems and "SAME uid" in problems[0]
 
 
 def test_unset_client_user_is_flagged():
     config.CLIENT_USER = ""
     problems = preflight.check_isolation()
-    assert problems and "not set" in problems[0]
+    assert problems and "cannot verify" in problems[0]
 
 
 def test_unknown_user_is_flagged():

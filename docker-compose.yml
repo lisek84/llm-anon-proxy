@@ -39,6 +39,11 @@ services:
       ANONPROXY_UI_SHOW_ORIGINALS: ${ANONPROXY_UI_SHOW_ORIGINALS:-false}
       ANONPROXY_ISOLATION: ${ANONPROXY_ISOLATION:-warn}
       ANONPROXY_CONTEXT: ${ANONPROXY_CONTEXT:-default}
+      # For ISOLATION=enforce inside a container the host username can't be
+      # resolved — pass the agent user's numeric id instead:
+      #   ANONPROXY_CLIENT_UID=$(id -u) ANONPROXY_CLIENT_GIDS="$(id -G|tr ' ' ,)" docker compose up -d
+      ANONPROXY_CLIENT_UID: ${ANONPROXY_CLIENT_UID:-}
+      ANONPROXY_CLIENT_GIDS: ${ANONPROXY_CLIENT_GIDS:-}
     volumes:
       - ./data:/app/data                       # persists to the compose directory
       - ./dictionary.yaml:/app/dictionary.yaml:ro

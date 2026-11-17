@@ -180,6 +180,25 @@ un-anonymized transmission cannot go unnoticed. The malformed-LLM-response case
 is also fail-closed now: an unparseable or structurally-wrong Ollama reply raises
 `LLMUnavailable` (only a valid `{"entities": []}` counts as "nothing found").
 
+## Remote MCP connector (`mcp_servers`)
+
+Anthropic's remote MCP connector (the top-level `mcp_servers` request field)
+cannot be anonymized: Anthropic *itself* connects to the MCP server, so it needs
+the real `url` and `authorization_token`. Substituting surrogates would break the
+connection. The proxy therefore forwards them as-is, with a dashboard notice and
+a best-effort leak scan, so you know the real URL + token left the machine; set
+`ANONPROXY_BLOCK_MCP=true` to refuse such requests instead. The same applies to
+the values a remote MCP tool call carries at Anthropic's side. The proxy *does*
+anonymize the conversation-side MCP blocks that go upstream in the history —
+`mcp_tool_use` inputs, `mcp_tool_result` content and `mcp_tool_listing`
+descriptions — like their non-MCP counterparts. For full control over
+infrastructure exposed to a remote MCP server, run that MCP server itself behind
+this proxy, or use a local MCP server instead of the remote connector.
+
+For the preflight to verify isolation inside a container (where the host
+username doesn't resolve), set `ANONPROXY_CLIENT_UID`/`ANONPROXY_CLIENT_GIDS` to
+the agent user's numeric `id -u` / `id -G` instead of `ANONPROXY_CLIENT_USER`.
+
 ## Detection is value-based, not positional
 
 Regex detection decides per *value*, not per occurrence, and the anonymizer then

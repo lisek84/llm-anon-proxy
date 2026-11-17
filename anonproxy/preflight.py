@@ -135,35 +135,43 @@ def check_isolation() -> list[str]:
     proxy_uid = os.getuid()
     proxy_user = pwd.getpwuid(proxy_uid).pw_name
 
-    client = config.CLIENT_USER.strip()
-    if not client:
-        problems.append(
-            "ANONPROXY_CLIENT_USER is not set — cannot verify the agent is isolated. "
-            "Set it to the OS user that runs Claude Code.")
-        return problems
+    # Resolve the agent's identity. Numeric CLIENT_UID/GIDS take precedence — in a
+    # container the host username doesn't exist in /etc/passwd, so a name can't be
+    # resolved and `id -u`/`id -G` of the host user must be passed instead.
+    if config.CLIENT_UID is not None:
+        cuid, cgids, label = config.CLIENT_UID, set(config.CLIENT_GIDS), f"uid {config.CLIENT_UID}"
+    else:
+        client = config.CLIENT_USER.strip()
+        if not client:
+            problems.append(
+                "neither ANONPROXY_CLIENT_USER nor ANONPROXY_CLIENT_UID is set — cannot "
+                "verify the agent is isolated. Set one to the user/uid that runs Claude Code.")
+            return problems
+        ids = _user_ids(client)
+        if ids is None:
+            problems.append(
+                f"ANONPROXY_CLIENT_USER '{client}' is not a known OS user — in a container "
+                "set ANONPROXY_CLIENT_UID/ANONPROXY_CLIENT_GIDS numerically instead.")
+            return problems
+        cuid, cgids, label = ids[0], ids[1], f"'{client}'"
 
-    if client == proxy_user:
+    if cuid == proxy_uid:
         problems.append(
-            f"proxy runs as the SAME user ('{proxy_user}') that runs Claude Code — "
-            f"the agent can read the vault and reverse everything. Run the proxy as a "
+            f"proxy runs as the SAME uid ({proxy_uid}, user '{proxy_user}') that runs Claude "
+            f"Code — the agent can read the vault and reverse everything. Run the proxy as a "
             f"different user / container / host.")
         return problems
 
-    ids = _user_ids(client)
-    if ids is None:
-        problems.append(f"ANONPROXY_CLIENT_USER '{client}' is not a known OS user.")
-        return problems
-    cuid, cgids = ids
     for p in _sensitive_paths():
         if not p.exists():
             continue
         res = _can_read(p, cuid, cgids)
         if res is True:
-            problems.append(f"client user '{client}' can read {p}")
+            problems.append(f"client {label} can read {p}")
         elif res is None:
             # Could not confirm the agent CANNOT read it (stat error or POSIX ACL
             # present) — for a security boundary, unverifiable means not isolated.
-            problems.append(f"cannot verify that client user '{client}' is denied "
+            problems.append(f"cannot verify that client {label} is denied "
                             f"{p} (permission check failed or an ACL is present)")
     return problems
 

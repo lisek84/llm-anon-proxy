@@ -56,6 +56,11 @@ class Config:
     # Block (instead of forward) any endpoint other than the anonymized ones
     # (/v1/messages, /v1/messages/count_tokens). Forwards raw otherwise.
     BLOCK_UNKNOWN_ENDPOINTS: bool = os.getenv("ANONPROXY_BLOCK_UNKNOWN", "false").lower() == "true"
+    # Block a request carrying `mcp_servers` (Anthropic's remote MCP connector).
+    # Its url + authorization_token CANNOT be anonymized — Anthropic needs the
+    # real values to reach the MCP server — so by default they are forwarded with
+    # a dashboard notice; set this to refuse such requests instead.
+    BLOCK_MCP_SERVERS: bool = os.getenv("ANONPROXY_BLOCK_MCP", "false").lower() == "true"
     # Optional shared secret for non-loopback deploys. If set, every request must
     # carry it as a URL path prefix: ANTHROPIC_BASE_URL=http://host:8787/<token>.
     TOKEN: str = os.getenv("ANONPROXY_TOKEN", "")
@@ -84,6 +89,15 @@ class Config:
     # The OS username that runs Claude Code. When set, the preflight verifies
     # that user cannot read the proxy's secret files.
     CLIENT_USER: str = os.getenv("ANONPROXY_CLIENT_USER", "")
+    # Numeric alternative, for containers where the host username doesn't resolve
+    # in the container's /etc/passwd: pass the agent user's `id -u` and `id -G`.
+    # Takes precedence over CLIENT_USER when set.
+    CLIENT_UID: int | None = (int(os.environ["ANONPROXY_CLIENT_UID"])
+                              if os.getenv("ANONPROXY_CLIENT_UID", "").strip().lstrip("-").isdigit()
+                              else None)
+    CLIENT_GIDS: frozenset = frozenset(
+        int(x) for x in os.getenv("ANONPROXY_CLIENT_GIDS", "").replace(",", " ").split()
+        if x.strip().lstrip("-").isdigit())
 
     # ── Audit trail ───────────────────────────────────────────────────────────
     # A time-ordered record of every value caught (first time it is seen):

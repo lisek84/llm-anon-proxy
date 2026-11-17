@@ -216,15 +216,21 @@ async def _anon_block(block: dict, source: str) -> dict:
         # surrogates, so thinking carries no real data, and altering it would
         # break the block's signature (the API rejects a mismatched thinking).
         pass
-    elif t == "tool_use":
+    elif t in ("tool_use", "mcp_tool_use"):
+        # mcp_tool_use is a remote-MCP tool call; its input is user data heading
+        # upstream, so anonymize it exactly like a normal tool_use input.
         matches = await _llm(json.dumps(block.get("input", {})))
         block["input"] = anonymizer.anonymize_value(block.get("input", {}), matches, source)
-    elif t == "tool_result":
+    elif t in ("tool_result", "mcp_tool_result"):
         c = block.get("content")
         if isinstance(c, str):
             block["content"] = await _anon_text(c, source)
         elif isinstance(c, list):
             block["content"] = [await _anon_block(b, source) for b in c]
+    elif t == "mcp_tool_listing":
+        # A listing of a remote MCP server's tools (names + free-text descriptions
+        # + input schemas). Scrub the free-text fields like any tool definition.
+        await _anon_schema_text(block)
     elif t == "document":
         src = block.get("source")
         if isinstance(src, dict) and src.get("type") == "text" and isinstance(src.get("data"), str):
@@ -272,6 +278,22 @@ async def _anon_body(body: dict) -> dict:
     if isinstance(body.get("tools"), list):
         for tool in body["tools"]:
             await _anon_schema_text(tool)
+    # Remote MCP connector: Anthropic connects to the server itself, so it needs
+    # the REAL url + authorization_token — anonymizing them would break the
+    # connection. We can't protect them; make that explicit (notice + leak scan),
+    # or refuse the request when BLOCK_MCP_SERVERS is on.
+    mcp = body.get("mcp_servers")
+    if isinstance(mcp, list) and mcp:
+        if config.BLOCK_MCP_SERVERS:
+            raise UnscannableContent("mcp_servers")
+        events.emit_notice(
+            "mcp_servers present — a remote MCP server's URL and authorization "
+            "token are forwarded to Anthropic un-anonymized (the connector needs "
+            "them). See THREAT-MODEL.", "mcp_servers")
+        try:
+            anonymizer.scan_for_leaks(json.dumps(mcp), "mcp_servers")
+        except Exception:  # noqa: BLE001
+            pass
     return body
 
 
