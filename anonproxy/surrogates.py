@@ -148,13 +148,19 @@ def _fake_ipv6(original: str, attempt: int, private: bool) -> str:
 
 
 def _fake_ipv6_cidr(original: str, attempt: int, private: bool) -> str:
-    prefix = original.split("/")[-1] if "/" in original else "64"
-    base = _fake_ipv6(original, attempt, private)
     try:
-        net = ipaddress.ip_network(f"{base}/{prefix}", strict=False)
-        return f"{net.network_address}/{prefix}"
+        prefix = int(original.split("/")[-1])
     except ValueError:
-        return f"{base}/{prefix}"
+        prefix = 64
+    base = _fake_ipv6(original, attempt, private)   # inside 2001:db8::/32 or fd00::/8
+    # Masking to a prefix SHORTER than the reserved space would zero out the
+    # reserved bits and escape it (/16 -> 2001::/16, a real global range). Never
+    # emit a network wider than the reserved prefix: clamp up to its boundary
+    # (32 for the doc prefix, 8 for ULA). Longer prefixes stay inside untouched.
+    floor = 8 if private else 32
+    eff = min(max(prefix, floor), 128)
+    net = ipaddress.ip_network(f"{base}/{eff}", strict=False)
+    return f"{net.network_address}/{eff}"
 
 
 def _is_private_ip6(ip: str) -> bool:

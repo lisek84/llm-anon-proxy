@@ -426,6 +426,21 @@ def test_ipv6_surrogate_ranges():
     assert priv.is_private
 
 
+@pytest.mark.parametrize("orig,reserved", [
+    ("2a01:4f8::/16", "2001:db8::/32"),   # wider than the doc prefix — must clamp, not escape
+    ("2a01:4f8::/24", "2001:db8::/32"),
+    ("2a01:4f8::/32", "2001:db8::/32"),
+    ("2a01:4f8:1::/48", "2001:db8::/32"),
+    ("2a01:4f8:1::/64", "2001:db8::/32"),
+    ("fc00::/7", "fd00::/8"),             # wider than ULA fd00::/8 — must clamp
+    ("fd12:3456::/32", "fd00::/8"),
+])
+def test_ipv6_cidr_surrogate_stays_in_reserved_space(orig, reserved):
+    import ipaddress
+    net = ipaddress.ip_network(surrogates.generate(orig, "CIDR"))
+    assert net.subnet_of(ipaddress.ip_network(reserved)), f"{orig} -> {net} escaped {reserved}"
+
+
 @pytest.mark.parametrize("text", [
     "loopback ::1 only",
     "google dns 2001:4860:4860::8888 resolver",

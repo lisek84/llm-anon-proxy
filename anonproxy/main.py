@@ -504,11 +504,15 @@ async def passthrough(request: Request, path: str) -> Response:
         log.warning("passthrough forwards an un-anonymized %s body for /%s (%d bytes)",
                     request.method, path, len(content))
     try:
-        query = str(request.url.query or "")
-        scanned = path + ("?" + query if query else "")
+        # Scan BOTH the raw query and the URL-decoded values: upstream receives
+        # decoded params (dict(request.query_params)), so a percent-encoded secret
+        # like ?token=ghp%5F… has no literal "ghp_" in the raw string and would
+        # otherwise slip past the token rule. multi_items() keeps duplicate keys.
+        parts = [path, str(request.url.query or "")]
+        parts += [f"{k}={v}" for k, v in request.query_params.multi_items()]
         if content:
-            scanned += "\n" + content.decode("utf-8", "replace")
-        anonymizer.scan_for_leaks(scanned, f"passthrough:{path}")
+            parts.append(content.decode("utf-8", "replace"))
+        anonymizer.scan_for_leaks("\n".join(p for p in parts if p), f"passthrough:{path}")
     except Exception:  # noqa: BLE001
         pass
     async with httpx.AsyncClient(timeout=120) as client:

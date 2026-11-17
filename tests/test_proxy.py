@@ -201,6 +201,23 @@ async def test_passthrough_bodyless_get_emits_notice_and_scans_query():
 
 
 @pytest.mark.asyncio
+async def test_passthrough_scans_urlencoded_query(monkeypatch):
+    # A percent-encoded secret (?token=ghp%5F…) has no literal "ghp_" in the raw
+    # query, but upstream receives it decoded — the scanner must see the decoded
+    # value, not just the raw string.
+    from anonproxy import anonymizer
+    seen = []
+    monkeypatch.setattr(anonymizer, "scan_for_leaks",
+                        lambda text, source="x": (seen.append(text), 0)[1])
+    ghp = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
+    enc = "ghp%5F" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"   # underscore encoded
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        await client.get(f"/some/thing?token={enc}")
+    assert any(ghp in t for t in seen), "decoded query secret never reached the scanner"
+
+
+@pytest.mark.asyncio
 async def test_inline_tool_addition_block_anonymized():
     # inline-tools beta: a tool declared inside a message as a `tool_addition`
     # block must have its free-text fields scrubbed too (not forwarded as-is),
