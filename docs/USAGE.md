@@ -68,6 +68,17 @@ www.shop.pl     → www.ab-cd.example
 status.shop.pl  → status.ab-cd.example
 ```
 
+This default (`ANONPROXY_SUBDOMAIN_POLICY=preserve`) keeps sub-label **names**
+visible to the model — and a name like `prod-db01`, `vpn` or a client's can be
+the most sensitive part. Set `ANONPROXY_SUBDOMAIN_POLICY=mask` to replace each
+sub-label with a deterministic inert token, keeping the level structure and the
+shared base but hiding the names:
+
+```
+prod-db01.shop.pl → k7f2d9.ab-cd.example
+vpn.shop.pl       → q3n8.ab-cd.example
+```
+
 What to put here: the high-value things a scan cannot infer — brand/project
 names, internal hostnames, service accounts, sensitive paths. Identifiers like
 domains/IPs/emails can be seeded automatically:

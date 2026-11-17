@@ -220,6 +220,32 @@ async def test_passthrough_bodyless_get_emits_notice_and_scans_query():
     assert after > before, "no un-anonymized notice for a body-less GET passthrough"
 
 
+def test_fwd_headers_strips_hop_by_hop_and_connection_tokens():
+    from anonproxy import main
+
+    class _R:
+        headers = {
+            "authorization": "Bearer x", "proxy-authorization": "Basic y",
+            "connection": "X-Internal-Token, keep-alive", "x-internal-token": "secret",
+            "anthropic-version": "2023-06-01", "content-type": "application/json",
+        }
+    fwd = main._fwd_headers(_R())
+    assert "authorization" in fwd and "content-type" in fwd   # provider headers kept
+    assert "proxy-authorization" not in fwd                   # dropped unconditionally
+    assert "x-internal-token" not in fwd                      # named in Connection → dropped
+
+
+@pytest.mark.asyncio
+async def test_passthrough_notice_masks_dictionary_value_in_path():
+    from anonproxy import events
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        await client.get("/api/of-prod-db01/status")       # of-prod-db01 is a dict host
+    notices = [e.get("message", "") for e in events.snapshot()["recent"]
+               if e.get("kind") == "notice"]
+    assert notices and not any("of-prod-db01" in m for m in notices)
+
+
 @pytest.mark.asyncio
 async def test_unrecognized_header_flagged_and_notice_redacts_path():
     from anonproxy import events, main

@@ -22,6 +22,14 @@ services:
     container_name: anonproxy
     ports:
       - "127.0.0.1:8787:8787"        # loopback only on the host
+    # Run as a non-root user. Default to 1000:1000 (the usual first host user, who
+    # owns ./data); override to match your host user:  ANONPROXY_UID=$(id -u)
+    # ANONPROXY_GID=$(id -g) docker compose up -d. Running as the host user avoids
+    # the bind-mount ownership problem while keeping the process out of root.
+    user: "${ANONPROXY_UID:-1000}:${ANONPROXY_GID:-1000}"
+    cap_drop: [ALL]                   # the proxy needs no Linux capabilities
+    security_opt:
+      - no-new-privileges:true        # block setuid privilege escalation
     environment:
       ANONPROXY_LLM: ${ANONPROXY_LLM:-false}
       ANONPROXY_OLLAMA_HOST: http://ollama:11434

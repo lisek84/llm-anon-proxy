@@ -11,6 +11,7 @@ before Claude Code sees them, so commands run against real hosts.
 """
 import json
 import logging
+import time
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -55,7 +56,12 @@ class _TokenMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_TokenMiddleware)
 
+# RFC 7230 hop-by-hop headers (+ proxy auth, which is strictly between hops and
+# must never be forwarded) + our own auth header. Headers NAMED in a request's
+# `Connection` value are also hop-by-hop and are stripped dynamically below.
 _HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "accept-encoding",
+               "keep-alive", "te", "trailer", "upgrade", "proxy-connection",
+               "proxy-authenticate", "proxy-authorization",
                "x-anonproxy-token"}  # our own auth header must never reach Anthropic
 
 
@@ -103,19 +109,37 @@ def _scan_forward_headers(forwarded: dict[str, str]) -> None:
 
 def _redact_for_display(s: str) -> str:
     """Redact secret-shaped substrings before showing a fail-open path on the
-    dashboard — an un-anonymized path must not be exposed verbatim to viewers."""
+    dashboard — an un-anonymized path must not be exposed verbatim to viewers.
+    Covers regex-detected secrets AND user dictionary values (a client/project
+    name in the path must not surface), over both the raw and URL-decoded form."""
     try:
+        from urllib.parse import unquote
+        decoded = unquote(s)
+        matches = {v for v, _ in regex_detector.detect(s)} | {v for v, _ in dictionary.detect(s)}
+        dec_matches = ({v for v, _ in regex_detector.detect(decoded)}
+                       | {v for v, _ in dictionary.detect(decoded)}) if decoded != s else set()
         out = s
-        for val, _etype in regex_detector.detect(s):
-            if len(val) >= 5:
+        for val in matches | dec_matches:
+            if len(val) >= 4 and val in out:
                 out = out.replace(val, val[:2] + "…" + val[-2:])
+        # A secret visible only once URL-decoded (…?x=klient%2Dalfa) would still be
+        # in the raw string in encoded form — redact the whole path to be safe.
+        if any(len(v) >= 4 and v not in out for v in dec_matches):
+            return "[redacted: encoded value]"
         return out
     except Exception:  # noqa: BLE001
         return "[redacted]"
 
 
 def _fwd_headers(request: Request) -> dict[str, str]:
-    fwd = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
+    # Also drop any header token listed in the client's `Connection` value (those
+    # are per-hop and must not be forwarded to Anthropic).
+    drop = set(_HOP_BY_HOP)
+    for tok in request.headers.get("connection", "").split(","):
+        tok = tok.strip().lower()
+        if tok:
+            drop.add(tok)
+    fwd = {k: v for k, v in request.headers.items() if k.lower() not in drop}
     _scan_forward_headers(fwd)
     return fwd
 
@@ -144,8 +168,19 @@ async def _llm(text: str) -> list[tuple[str, str]]:
         # string uniformly — no partial state.
         if config.LLM_FAIL_CLOSED:
             raise
+        # Fail-open must be VISIBLE: detection quality just dropped. Surface it on
+        # the dashboard (throttled so one request's many strings don't spam).
+        global _last_llm_degrade_notice
+        now = time.monotonic()
+        if now - _last_llm_degrade_notice > 2.0:
+            _last_llm_degrade_notice = now
+            events.emit_notice("LLM detector unavailable — processed with dictionary+regex only",
+                               "llm")
         log.warning("LLM layer unavailable — degrading to dictionary+regex for this request")
         return []
+
+
+_last_llm_degrade_notice = 0.0
 
 
 async def _anon_text(text: str, source: str) -> str:

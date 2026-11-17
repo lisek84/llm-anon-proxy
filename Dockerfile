@@ -11,10 +11,14 @@ COPY anonproxy/ ./anonproxy/
 # In-container defaults. The container listens on 0.0.0.0 but compose publishes
 # it only to the host loopback (127.0.0.1). Data and the dictionary are bind
 # mounts (see docker-compose.yml), so they live in the compose directory.
+# PYTHONDONTWRITEBYTECODE: the container runs as a non-root user (see
+# docker-compose.yml) that can't write __pycache__ into /app — skip it cleanly.
 ENV ANONPROXY_HOST=0.0.0.0 \
     ANONPROXY_PORT=8787 \
     ANONPROXY_DATA_DIR=/app/data \
-    ANONPROXY_DICT=/app/dictionary.yaml
+    ANONPROXY_DICT=/app/dictionary.yaml \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 EXPOSE 8787
 

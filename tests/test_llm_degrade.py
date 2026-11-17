@@ -51,6 +51,16 @@ async def test_fail_open_degrades_to_regex_dict():
 
 
 @pytest.mark.asyncio
+async def test_fail_open_degradation_emits_dashboard_notice():
+    from anonproxy import events
+    config.LLM_FAIL_CLOSED = False
+    main._last_llm_degrade_notice = 0.0        # reset the throttle
+    before = events.snapshot()["notices"]
+    await main._anon_text("visit example.com now", "test")
+    assert events.snapshot()["notices"] > before   # degradation is visible
+
+
+@pytest.mark.asyncio
 async def test_fail_closed_raises():
     config.LLM_FAIL_CLOSED = True
     with pytest.raises(llm_detector.LLMUnavailable):
@@ -75,7 +85,19 @@ def test_empty_entities_is_a_normal_empty_result():
     assert llm_detector._parse_entities('{"entities":[]}', "text") == []
 
 
-def test_non_string_entity_fields_are_skipped_not_crash():
-    raw = '{"entities":[{"text":123,"type":"HOSTNAME"},{"text":"of-db01","type":"HOSTNAME"}]}'
-    out = llm_detector._parse_entities(raw, "connect to of-db01 now")
-    assert out == [("of-db01", "HOSTNAME")]          # bad element skipped, no exception
+def test_malformed_entity_element_raises():
+    # A non-string field or a missing `type` is a detector malfunction — raise
+    # (so fail-closed blocks) instead of treating it as "nothing found".
+    with pytest.raises(llm_detector.LLMUnavailable):
+        llm_detector._parse_entities(
+            '{"entities":[{"text":123,"type":"HOSTNAME"}]}', "x")
+    with pytest.raises(llm_detector.LLMUnavailable):
+        llm_detector._parse_entities('{"entities":[{"text":"DC01"}]}', "host DC01 here")
+
+
+def test_wellformed_but_unusable_entity_is_skipped_not_raised():
+    # Correct shape, but the text isn't in the input / type we don't anonymize:
+    # that's benign variance, not a malfunction — skip without raising.
+    raw = '{"entities":[{"text":"not-in-input","type":"HOSTNAME"},' \
+          '{"text":"of-db01","type":"WEATHER"}]}'
+    assert llm_detector._parse_entities(raw, "connect to of-db01 now") == []

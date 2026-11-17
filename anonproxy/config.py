@@ -17,6 +17,15 @@ class Config:
     # Per-context isolation of mappings (like an "engagement"/project id).
     CONTEXT_ID: str = os.getenv("ANONPROXY_CONTEXT", "default")
 
+    # How a domain's sub-labels are surrogated:
+    #   "preserve" (default) — keep them literal: prod-db01.acme.pl ->
+    #       prod-db01.<base>.example. Best for the model (it sees infra structure),
+    #       but sub-label names (prod-db01, vpn, dc01, a client name) are exposed.
+    #   "mask" — replace each sub-label with a deterministic inert token, keeping
+    #       the level count and the shared base: prod-db01.acme.pl ->
+    #       k7f2d9.<base>.example. Hides the names, keeps structure + consistency.
+    SUBDOMAIN_POLICY: str = os.getenv("ANONPROXY_SUBDOMAIN_POLICY", "preserve").lower()
+
     DATA_DIR: Path = DATA_DIR
     DB_PATH: Path = Path(os.getenv("ANONPROXY_DB", str(DATA_DIR / "mappings.db")))
 

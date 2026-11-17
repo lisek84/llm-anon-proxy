@@ -51,10 +51,12 @@ def _sensitive_paths() -> list:
 def harden_permissions() -> None:
     """data dir -> 0700, sensitive files -> 0600 (best effort, even if existing)."""
     try:
-        if config.DATA_DIR.exists():
-            os.chmod(config.DATA_DIR, stat.S_IRWXU)  # 0700
+        # Create it 0700 now, before vault._connect() would otherwise mkdir it
+        # later with the default umask (e.g. 0755) on a fresh install.
+        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        os.chmod(config.DATA_DIR, stat.S_IRWXU)  # 0700
     except OSError as exc:
-        log.warning("could not chmod data dir: %s", exc)
+        log.warning("could not create/chmod data dir: %s", exc)
     for p in _sensitive_files():
         try:
             if p.exists():

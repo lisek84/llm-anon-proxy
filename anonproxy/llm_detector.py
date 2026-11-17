@@ -97,13 +97,16 @@ def _parse_entities(raw: str, text: str) -> list[tuple[str, str]]:
 
     out: list[tuple[str, str]] = []
     for e in data["entities"]:
-        if not isinstance(e, dict):
-            continue
-        val, etype = e.get("text"), e.get("type")
-        if not isinstance(val, str) or not isinstance(etype, str):
-            continue  # a non-string field would crash .strip(); skip the element
-        val = val.strip()
-        etype = etype.strip().upper()
+        # A structurally malformed element (not a dict, or missing/non-string
+        # text/type) means the detector misbehaved — under fail-closed that must
+        # block, not look like "nothing found". Raise instead of silently skipping.
+        if not isinstance(e, dict) or not isinstance(e.get("text"), str) \
+                or not isinstance(e.get("type"), str):
+            raise LLMUnavailable(f"LLM returned a malformed entity record: {e!r}")
+        val = e["text"].strip()
+        etype = e["type"].strip().upper()
+        # Well-formed but unusable (text not in the input, or a type we don't
+        # anonymize) is not an error — just skip it.
         if val and val in text and etype in _ALLOWED:
             out.append((val, etype))
     return out

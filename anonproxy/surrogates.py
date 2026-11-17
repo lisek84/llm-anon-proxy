@@ -109,7 +109,19 @@ def _fake_domain(original: str, attempt: int) -> str:
     label1 = _rand_from(d, _LOWER, 6)
     label2 = _rand_from(d[8:], _LOWER, 5)
     base_surrogate = f"{label1}-{label2}.example"
-    return f"{sub}.{base_surrogate}" if sub else base_surrogate
+    if not sub:
+        return base_surrogate
+    if config.SUBDOMAIN_POLICY == "mask":
+        # Replace each sub-label with a deterministic inert token (keyed on the
+        # base too, so the same name on different sites isn't linkable), keeping
+        # the level structure and the shared base.
+        sub = ".".join(_mask_label(base, lbl) for lbl in sub.split("."))
+    return f"{sub}.{base_surrogate}"
+
+
+def _mask_label(base: str, label: str) -> str:
+    d = _digest("SUBLABEL", f"{base}|{label}", 0)
+    return _rand_from(d, _LOWER_DIGITS, max(4, min(len(label), 10)))
 
 
 def _fake_hostname(original: str, attempt: int) -> str:

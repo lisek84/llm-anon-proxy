@@ -83,6 +83,16 @@ def test_multi_label_public_suffix_shares_base():
     assert surrogates.generate("shop.acme.co.uk", "DOMAIN") == "shop." + apex
 
 
+def test_subdomain_mask_policy_hides_labels(monkeypatch):
+    monkeypatch.setattr(config, "SUBDOMAIN_POLICY", "mask")
+    apex = surrogates.generate("acme.pl", "DOMAIN")
+    sub = surrogates.generate("prod-db01.acme.pl", "DOMAIN")
+    assert "prod-db01" not in sub                    # sensitive label hidden
+    assert sub.endswith("." + apex)                  # shared base kept (consistency)
+    assert sub.count(".") == apex.count(".") + 1     # one extra level, structure kept
+    assert sub == surrogates.generate("prod-db01.acme.pl", "DOMAIN")  # deterministic
+
+
 def test_bare_brand_replaced():
     anon, back = rt("deploy aplikacji example na prod")
     assert "example" not in anon

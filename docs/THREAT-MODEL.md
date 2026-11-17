@@ -156,9 +156,12 @@ Default behaviour favours not breaking Claude Code; these make it strict:
   tunnel / firewall and prefer the header where the client can send one.
 
 The startup preflight checks classic Unix owner/group/mode and directory
-traversal. It does **not** evaluate POSIX ACLs, capabilities, or access via a
-Docker socket or a privileged process — treat it as a backstop, not proof of
-isolation (only the OS/user/host boundary isolates you).
+traversal. It **detects** the presence of an extended POSIX ACL (via the
+`system.posix_acl_access` xattr) and a failed permission check and treats either
+as *isolation not confirmed* (a problem in `enforce` mode), but it does **not**
+resolve named ACL entries to decide who they grant, nor does it evaluate
+capabilities or access via a Docker socket / privileged process — treat it as a
+backstop, not proof of isolation (only the OS/user/host boundary isolates you).
 
 The outgoing leak scan is **leak detection** (rotatable CREDENTIAL/TOKEN still
 present), not full **privacy verification**: a plain host like `prod-db-01` that
