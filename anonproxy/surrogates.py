@@ -73,11 +73,42 @@ _LOWER = string.ascii_lowercase
 _ALNUM = string.ascii_letters + string.digits
 
 
+# Common multi-label public suffixes, so acme.co.uk / shop.acme.co.uk share a base
+# (we don't ship the full Public Suffix List; this covers the frequent cases).
+_MULTI_SUFFIX = frozenset((
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "me.uk", "net.uk", "sch.uk", "ltd.uk", "plc.uk",
+    "com.pl", "net.pl", "org.pl", "gov.pl", "edu.pl", "waw.pl",
+    "com.au", "net.au", "org.au", "gov.au", "edu.au", "id.au",
+    "co.jp", "or.jp", "ne.jp", "ac.jp", "go.jp", "co.kr", "or.kr",
+    "co.nz", "org.nz", "govt.nz", "co.za", "org.za", "co.in", "net.in", "org.in",
+    "com.br", "com.cn", "com.tr", "com.mx", "com.ar", "com.sg", "com.hk", "com.ua",
+))
+
+
+def _registrable(host: str) -> str:
+    """The registrable (base) domain: example.com, acme.co.uk — last 2 labels,
+    or 3 when the last two form a known multi-label public suffix."""
+    labels = host.lower().strip(".").split(".")
+    if len(labels) <= 2:
+        return ".".join(labels)
+    if ".".join(labels[-2:]) in _MULTI_SUFFIX and len(labels) >= 3:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
 def _fake_domain(original: str, attempt: int) -> str:
-    d = _digest("DOMAIN", original, attempt)
+    # Swap only the registrable part; keep sub-labels so a site and its
+    # subdomains map consistently (sklep.pl -> ab-cd.example,
+    # www.sklep.pl -> www.ab-cd.example, status.sklep.pl -> status.ab-cd.example).
+    # The digest is keyed on the base alone, so every subdomain shares one base.
+    host = original.lower().strip(".")
+    base = _registrable(host)
+    sub = host[: len(host) - len(base)].rstrip(".")   # labels before the base, or ""
+    d = _digest("DOMAIN", base, attempt)
     label1 = _rand_from(d, _LOWER, 6)
     label2 = _rand_from(d[8:], _LOWER, 5)
-    return f"{label1}-{label2}.example"
+    base_surrogate = f"{label1}-{label2}.example"
+    return f"{sub}.{base_surrogate}" if sub else base_surrogate
 
 
 def _fake_hostname(original: str, attempt: int) -> str:

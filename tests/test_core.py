@@ -66,6 +66,23 @@ def test_domain_and_subdomain_roundtrip():
     assert back == "connect to cdn3.example.com and example.com"
 
 
+def test_subdomain_surrogates_share_one_base():
+    # A site and its subdomains must map to related surrogates, so the model can
+    # tell they're the same site (apex surrogate is the shared base).
+    apex = surrogates.generate("acme-crm.pl", "DOMAIN")
+    assert apex.endswith(".example") and apex.count(".") == 1
+    assert surrogates.generate("www.acme-crm.pl", "DOMAIN") == "www." + apex
+    assert surrogates.generate("status.acme-crm.pl", "DOMAIN") == "status." + apex
+    # a different registrable domain gets a different base
+    other = surrogates.generate("www.other-shop.pl", "DOMAIN")
+    assert not other.endswith("." + apex)
+
+
+def test_multi_label_public_suffix_shares_base():
+    apex = surrogates.generate("acme.co.uk", "DOMAIN")       # co.uk kept as suffix
+    assert surrogates.generate("shop.acme.co.uk", "DOMAIN") == "shop." + apex
+
+
 def test_bare_brand_replaced():
     anon, back = rt("deploy aplikacji example na prod")
     assert "example" not in anon
