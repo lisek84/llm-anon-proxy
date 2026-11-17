@@ -155,6 +155,20 @@ proxy is isolated from the agent. To show real values (loopback only; the agent
 could then read them too): `ANONPROXY_UI_SHOW_ORIGINALS=true`. Disable the UI
 entirely with `ANONPROXY_UI=false`.
 
+**Securing it for remote use.** The dashboard is open and unencrypted by default
+(fine next to your work, on loopback). If you expose the proxy off-loopback, put
+it behind TLS (`ANONPROXY_TLS=true`, same as the API) and add a login:
+
+```bash
+python -m anonproxy.uiauth add alice     # prompts for a password; now /ui needs login
+python -m anonproxy.uiauth list
+python -m anonproxy.uiauth disable       # remove all viewers → dashboard open again
+```
+
+Adding the first viewer turns on HTTP Basic auth automatically (passwords are
+stored hashed in `data/ui-users.json`). Use it together with TLS — Basic auth
+over plain HTTP sends the password reversibly.
+
 ## Rotation log
 
 Every secret-shaped value seen is appended to `data/rotate.log.jsonl` (`0600`,

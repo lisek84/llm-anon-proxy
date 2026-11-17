@@ -181,3 +181,27 @@ async def test_tool_input_schema_description_anonymized():
     assert "example.com" not in desc
     # structure preserved
     assert out["tools"][0]["input_schema"]["properties"]["host"]["type"] == "string"
+
+
+# ── Dashboard login (optional HTTP Basic) ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ui_open_by_default_then_requires_login(tmp_path):
+    import base64 as _b64
+    from anonproxy import uiauth
+    config.DATA_DIR = tmp_path
+    config.UI_ENABLED = True
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://p") as c:
+        assert (await c.get("/ui/stats")).status_code == 200      # open by default
+        uiauth.add_user("alice", "sekret12")                      # enables login
+        assert (await c.get("/ui/stats")).status_code == 401      # now required
+        cred = _b64.b64encode(b"alice:sekret12").decode()
+        r = await c.get("/ui/stats", headers={"authorization": f"Basic {cred}"})
+        assert r.status_code == 200
+        bad = _b64.b64encode(b"alice:wrong").decode()
+        assert (await c.get("/ui/stats",
+                            headers={"authorization": f"Basic {bad}"})).status_code == 401
+        uiauth.disable()
+        assert (await c.get("/ui/stats")).status_code == 200      # open again
+    config.DATA_DIR = Path(_MY_DB).parent

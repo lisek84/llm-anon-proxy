@@ -159,6 +159,20 @@ jest odizolowane od agenta. Aby pokazać prawdziwe wartości (tylko loopback; ag
 mógłby je wtedy też odczytać): `ANONPROXY_UI_SHOW_ORIGINALS=true`. Całkowicie
 wyłącz UI przez `ANONPROXY_UI=false`.
 
+**Zabezpieczenie do użycia zdalnego.** Dashboard jest domyślnie otwarty i
+nieszyfrowany (OK obok okna roboczego, na loopbacku). Jeśli wystawiasz proxy poza
+loopback, schowaj je za TLS (`ANONPROXY_TLS=true`, tak jak API) i dodaj login:
+
+```bash
+python -m anonproxy.uiauth add alice     # pyta o hasło; teraz /ui wymaga logowania
+python -m anonproxy.uiauth list
+python -m anonproxy.uiauth disable       # usuń wszystkich → dashboard znów otwarty
+```
+
+Dodanie pierwszego użytkownika automatycznie włącza HTTP Basic auth (hasła
+trzymane jako hashe w `data/ui-users.json`). Używaj razem z TLS — Basic auth po
+gołym HTTP wysyła hasło odwracalnie.
+
 ## Rejestr rotacji
 
 Każda napotkana wartość o kształcie sekretu jest dopisywana do

@@ -40,7 +40,8 @@ def _sensitive_files() -> tuple:
     # AUDIT_PATH holds the full original<->surrogate map, so it is as sensitive
     # as the vault and must be covered too.
     return (config.DB_PATH, config.SECRET_KEY_PATH, config.DICT_PATH,
-            config.LEAKLOG_PATH, config.AUDIT_PATH)
+            config.LEAKLOG_PATH, config.AUDIT_PATH,
+            config.DATA_DIR / "ui-users.json")  # dashboard password hashes
 
 
 def _sensitive_paths() -> list:

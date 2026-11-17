@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import anonymizer, dictionary, events, leaklog, llm_detector, preflight, vault, webui
+from . import anonymizer, dictionary, events, leaklog, llm_detector, preflight, uiauth, vault, webui
 from .config import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
@@ -446,24 +446,24 @@ async def health() -> dict:
 # ── Live dashboard (registered before the upstream catch-all) ─────────────────
 
 @app.get("/ui")
-async def ui_page():
+async def ui_page(request: Request):
     if not config.UI_ENABLED:
         return Response(status_code=404)
-    return webui.page()
+    return uiauth.challenge_if_needed(request) or webui.page()
 
 
 @app.get("/ui/stats")
-async def ui_stats():
+async def ui_stats(request: Request):
     if not config.UI_ENABLED:
         return Response(status_code=404)
-    return webui.stats_json()
+    return uiauth.challenge_if_needed(request) or webui.stats_json()
 
 
 @app.get("/ui/events")
 async def ui_events(request: Request):
     if not config.UI_ENABLED:
         return Response(status_code=404)
-    return await webui.events_stream(request)
+    return uiauth.challenge_if_needed(request) or await webui.events_stream(request)
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
