@@ -355,3 +355,9 @@ def test_llm_safe_terms_filtered():
     for kept in ("nmap", "smb", "CVE-2024-6387", "kube-system"):
         assert kept in anon
     assert "web-prod-01" not in anon  # a real hostname is still replaced
+
+
+def test_slack_webhook_token_caught():
+    url = "https://hooks.slack.com/services/T000ABC/B111DEF/xoxbFAKE0123456789"
+    anon = anonymizer.anonymize(f"webhook: {url}", source="test")
+    assert "xoxbFAKE0123456789" not in anon

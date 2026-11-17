@@ -38,6 +38,10 @@ _add("TOKEN", r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b")
 _add("TOKEN", r"\bsk_live_[A-Za-z0-9]{16,}\b")
 _add("TOKEN", r"\bsk_test_[A-Za-z0-9]{16,}\b")
 _add("TOKEN", r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")
+# Slack/Discord-style webhook URL: the path token after …/services/T…/B…/ is the
+# secret (the host gets anonymized separately, so the token must be caught here).
+_add("TOKEN", r"(?i)hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/(?P<v>[A-Za-z0-9]{8,})", "v")
+_add("TOKEN", r"(?i)discord(?:app)?\.com/api/webhooks/\d+/(?P<v>[A-Za-z0-9_-]{16,})", "v")
 _add("TOKEN", r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}\b")  # JWT
 _add("TOKEN", r"\bAIza[0-9A-Za-z_-]{35}\b")  # Google API key
 _add("TOKEN", r"\bglpat-[A-Za-z0-9_-]{20,}\b")  # GitLab PAT
