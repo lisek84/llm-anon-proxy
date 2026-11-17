@@ -54,7 +54,8 @@ class _TokenMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_TokenMiddleware)
 
-_HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "accept-encoding"}
+_HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "accept-encoding",
+               "x-anonproxy-token"}  # our own auth header must never reach Anthropic
 
 
 @app.on_event("startup")

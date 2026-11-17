@@ -236,3 +236,14 @@ async def test_unscannable_block_emits_dashboard_notice():
         {"type": "image", "source": {"type": "base64", "data": "x"}}]}]}
     await main._anon_body(body)
     assert events.snapshot()["notices"] > before
+
+
+def test_proxy_token_header_not_forwarded_upstream():
+    # P0: X-Anonproxy-Token must not be copied into the upstream request headers.
+    import types
+    stub = types.SimpleNamespace(headers=httpx.Headers({
+        "authorization": "Bearer realkey", "x-anonproxy-token": "s3cr3t",
+        "anthropic-version": "2023-06-01", "host": "proxy"}))
+    fwd = main._fwd_headers(stub)
+    assert "x-anonproxy-token" not in {k.lower() for k in fwd}
+    assert fwd["authorization"] == "Bearer realkey"   # real auth still forwarded
