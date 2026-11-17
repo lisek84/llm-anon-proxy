@@ -41,6 +41,32 @@ def test_event_bus_since_and_snapshot():
     assert events.since(snap["last_id"]) == []  # nothing newer yet
 
 
+def test_uiauth_states_and_fail_closed(tmp_path, monkeypatch):
+    from anonproxy import uiauth
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    # no file → open
+    assert uiauth._state()[0] == "open" and not uiauth.required()
+    # a configured viewer → login required, file is valid JSON and 0600
+    uiauth.add_user("alice", "hunter2hunter")
+    assert uiauth._state()[0] == "auth" and uiauth.required()
+    import json as _json
+    assert "alice" in _json.loads((tmp_path / "ui-users.json").read_text())
+    # corrupt file → 'error' and STILL required (must not fall open)
+    (tmp_path / "ui-users.json").write_text("{ this is not json")
+    assert uiauth._state()[0] == "error" and uiauth.required()
+
+
+def test_uiauth_corrupt_file_returns_503(tmp_path, monkeypatch):
+    from anonproxy import uiauth
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    (tmp_path / "ui-users.json").write_text("not valid json {{")
+
+    class _Req:
+        headers: dict = {}
+    resp = uiauth.challenge_if_needed(_Req())
+    assert resp is not None and resp.status_code == 503   # fail closed, not open
+
+
 def test_serialize_masks_by_default():
     e = {"id": 1, "kind": "catch", "ts": 0, "source": "message",
          "type": "DOMAIN", "original": "secret-host.example", "surrogate": "fake.example"}

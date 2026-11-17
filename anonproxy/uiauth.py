@@ -44,14 +44,42 @@ def _load() -> dict:
         return {}
 
 
+def _state() -> tuple[str, dict]:
+    """Three distinct states, so a read error can't silently open the dashboard:
+      ('open',  {})     — no viewer file / no viewers: dashboard is open (by design)
+      ('auth',  users)  — viewers configured: login required
+      ('error', {})     — file exists but is unreadable/corrupt: FAIL CLOSED (deny)
+    """
+    p = _path()
+    if not p.exists():
+        return "open", {}
+    try:
+        users = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "error", {}
+    if not isinstance(users, dict) or not users:
+        return "open", {}
+    return "auth", users
+
+
 def _save(users: dict) -> None:
+    import tempfile
     p = _path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(users, indent=2), encoding="utf-8")
+    # Atomic: write a sibling temp file, fix its mode, then rename over the target
+    # so a crash mid-write can never leave ui-users.json truncated/corrupt.
+    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=".ui-users.", suffix=".tmp")
     try:
-        os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2)
+        os.chmod(tmp, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+        os.replace(tmp, p)
     except OSError:
-        pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _hash(password: str, salt: bytes) -> str:
@@ -82,17 +110,15 @@ def disable() -> None:
 
 
 def required() -> bool:
-    """Login is required exactly when at least one viewer exists."""
-    return bool(_load())
+    """Login is required when viewers are configured — or when the viewer file
+    exists but can't be read (fail closed)."""
+    return _state()[0] != "open"
 
 
-def verify(user: str, password: str) -> bool:
-    rec = _load().get(user)
-    if not rec:
-        return False
+def _verify_rec(rec: dict, password: str) -> bool:
     try:
         salt = bytes.fromhex(rec["salt"])
-    except (KeyError, ValueError):
+    except (KeyError, TypeError, ValueError):
         return False
     expected = rec.get("hash", "")
     got = hashlib.pbkdf2_hmac("sha256", password.encode(), salt,
@@ -100,16 +126,28 @@ def verify(user: str, password: str) -> bool:
     return hmac.compare_digest(got, expected)
 
 
+def verify(user: str, password: str) -> bool:
+    rec = _load().get(user)
+    return bool(rec) and _verify_rec(rec, password)
+
+
 def challenge_if_needed(request: Request) -> Response | None:
-    """Return a 401 Response if the request lacks valid Basic auth, else None."""
-    if not required():
+    """Return a 401/503 Response if access is not allowed, else None."""
+    state, users = _state()
+    if state == "open":
         return None
+    if state == "error":
+        # The viewer file exists but is unreadable/corrupt — do NOT fall back to
+        # an open dashboard; refuse until an admin fixes it.
+        return Response(status_code=503, media_type="text/plain",
+                        content="dashboard auth config is unreadable — access refused")
     header = request.headers.get("authorization", "")
     if header.startswith("Basic "):
         try:
             raw = base64.b64decode(header[6:]).decode("utf-8", "replace")
             user, _, password = raw.partition(":")
-            if verify(user, password):
+            rec = users.get(user)
+            if rec and _verify_rec(rec, password):
                 return None
         except (binascii.Error, ValueError):
             pass

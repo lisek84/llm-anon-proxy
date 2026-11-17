@@ -427,6 +427,20 @@ def test_ipv6_surrogate_ranges():
 
 
 @pytest.mark.parametrize("orig,reserved", [
+    ("51.75.0.0/8", "198.18.0.0/15"),     # public, wider than /15 — must clamp
+    ("51.75.0.0/16", "198.18.0.0/15"),
+    ("51.75.1.0/24", "198.18.0.0/15"),
+    ("51.75.1.9/32", "198.18.0.0/15"),
+    ("10.9.0.0/8", "10.0.0.0/8"),         # private
+    ("172.16.0.0/12", "10.0.0.0/8"),
+])
+def test_ipv4_cidr_surrogate_stays_in_reserved_space(orig, reserved):
+    import ipaddress
+    net = ipaddress.ip_network(surrogates.generate(orig, "CIDR"))
+    assert net.subnet_of(ipaddress.ip_network(reserved)), f"{orig} -> {net} escaped {reserved}"
+
+
+@pytest.mark.parametrize("orig,reserved", [
     ("2a01:4f8::/16", "2001:db8::/32"),   # wider than the doc prefix — must clamp, not escape
     ("2a01:4f8::/24", "2001:db8::/32"),
     ("2a01:4f8::/32", "2001:db8::/32"),

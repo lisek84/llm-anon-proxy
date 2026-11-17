@@ -76,8 +76,21 @@ def _user_ids(username: str) -> tuple[int, set[int]] | None:
     return pw.pw_uid, gids
 
 
-def _can_read(path, uid: int, gids: set[int]) -> bool:
-    """Would a user with this uid/gids be able to read `path`?
+def _has_posix_acl(path) -> bool:
+    """True if `path` carries an extended POSIX ACL (a named user/group entry the
+    classic uid/gid/other bits don't represent). Linux stores it in the
+    `system.posix_acl_access` xattr. Best-effort: unknown platforms return False."""
+    try:
+        return "system.posix_acl_access" in os.listxattr(path)
+    except (OSError, AttributeError):
+        return False
+
+
+def _can_read(path, uid: int, gids: set[int]):
+    """Tri-state: True (the user CAN read), False (definitely cannot), or None
+    (UNKNOWN — a stat failed, or an extended ACL grants access the classic bits
+    can't be trusted to represent). For an isolation check, None must NOT be
+    read as 'safe'; the caller treats it as 'isolation not confirmed'.
 
     Checks the file's own bits plus traverse (x) on every parent directory —
     a file is only reachable if each ancestor dir is executable by the user.
@@ -85,7 +98,7 @@ def _can_read(path, uid: int, gids: set[int]) -> bool:
     try:
         st = path.stat()
     except OSError:
-        return False
+        return None   # can't verify → unknown, not safe
 
     def readable(st_, want_r) -> bool:
         mode = st_.st_mode
@@ -95,18 +108,20 @@ def _can_read(path, uid: int, gids: set[int]) -> bool:
             return bool(mode & (stat.S_IRGRP if want_r else stat.S_IXGRP))
         return bool(mode & (stat.S_IROTH if want_r else stat.S_IXOTH))
 
-    # Need read on the file itself.
+    # An ACL on the file or any ancestor can grant this user access invisibly to
+    # the bit check — we can't confidently say "cannot read", so report unknown.
     if not readable(st, want_r=True):
+        if _has_posix_acl(path):
+            return None
         return False
-    # Need execute/search on every ancestor directory.
     p = path.resolve()
     for parent in p.parents:
         try:
             pst = parent.stat()
         except OSError:
-            return False
+            return None
         if not readable(pst, want_r=False):
-            return False
+            return None if _has_posix_acl(parent) else False
         if parent == parent.parent:  # reached root
             break
     return True
@@ -138,8 +153,16 @@ def check_isolation() -> list[str]:
         return problems
     cuid, cgids = ids
     for p in _sensitive_paths():
-        if p.exists() and _can_read(p, cuid, cgids):
+        if not p.exists():
+            continue
+        res = _can_read(p, cuid, cgids)
+        if res is True:
             problems.append(f"client user '{client}' can read {p}")
+        elif res is None:
+            # Could not confirm the agent CANNOT read it (stat error or POSIX ACL
+            # present) — for a security boundary, unverifiable means not isolated.
+            problems.append(f"cannot verify that client user '{client}' is denied "
+                            f"{p} (permission check failed or an ACL is present)")
     return problems
 
 

@@ -202,6 +202,20 @@ async def test_passthrough_bodyless_get_emits_notice_and_scans_query():
 
 
 @pytest.mark.asyncio
+async def test_unrecognized_header_flagged_and_notice_redacts_path():
+    from anonproxy import events, main
+    main._warned_headers.discard("x-internal-user")
+    ghp = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        await client.get(f"/api/users/{ghp}", headers={"X-Internal-User": "jan-kowalski"})
+    notices = [e.get("message", "") for e in events.snapshot()["recent"]
+               if e.get("kind") == "notice"]
+    assert any("x-internal-user" in m for m in notices), "unrecognized header not flagged"
+    assert not any(ghp in m for m in notices), "raw token leaked into a dashboard notice"
+
+
+@pytest.mark.asyncio
 async def test_passthrough_preserves_repeated_query_keys():
     # ?tag=a&tag=b must reach upstream as two params, not collapsed to one.
     transport = httpx.ASGITransport(app=app)

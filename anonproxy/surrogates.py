@@ -128,11 +128,18 @@ def _fake_ipv4(original: str, attempt: int, private: bool) -> str:
 
 
 def _fake_cidr(original: str, attempt: int, private: bool) -> str:
-    base = _fake_ipv4(original, attempt, private)
-    prefix = original.split("/")[-1] if "/" in original else "24"
-    octets = base.split(".")
-    octets[3] = "0"
-    return ".".join(octets) + "/" + prefix
+    try:
+        prefix = int(original.split("/")[-1])
+    except ValueError:
+        prefix = 24
+    base = _fake_ipv4(original, attempt, private)   # in 198.18.0.0/15 or 10.0.0.0/8
+    # Same guard as IPv6: masking to a prefix wider than the reserved space would
+    # escape it (a /8 base -> 198.0.0.0/8). Never emit a network wider than the
+    # reserved prefix (/15 public, /8 private); normalize so no host bits remain.
+    floor = 8 if private else 15
+    eff = min(max(prefix, floor), 32)
+    net = ipaddress.ip_network(f"{base}/{eff}", strict=False)
+    return f"{net.network_address}/{eff}"
 
 
 def _fake_ipv6(original: str, attempt: int, private: bool) -> str:

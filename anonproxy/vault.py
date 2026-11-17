@@ -8,11 +8,26 @@ Guarantees:
     (uniqueness enforced on insert — the reverse map is unambiguous, so a
     deanonymized command can never be routed to the wrong host).
 """
+import os
 import sqlite3
+import stat
 import threading
 from pathlib import Path
 
 from .config import config
+
+
+def _harden_db_perms(path: Path) -> None:
+    """Force 0600 on the DB and its WAL/SHM sidecars. Preflight only hardens
+    pre-existing files; SQLite creates these here, and a custom ANONPROXY_DB
+    outside the 0700 data dir would otherwise inherit the umask (world-readable)."""
+    for suffix in ("", "-wal", "-shm"):
+        f = path.with_name(path.name + suffix)
+        try:
+            if f.exists():
+                os.chmod(f, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+        except OSError:
+            pass
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -42,6 +57,7 @@ def _connect(db_path: Path | None = None) -> sqlite3.Connection:
         """
     )
     conn.commit()
+    _harden_db_perms(path)
     return conn
 
 

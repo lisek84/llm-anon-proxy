@@ -18,7 +18,8 @@ from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from . import anonymizer, dictionary, events, leaklog, llm_detector, preflight, uiauth, vault, webui
+from . import (anonymizer, dictionary, events, leaklog, llm_detector, preflight,
+               regex_detector, uiauth, vault, webui)
 from .config import config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
@@ -70,8 +71,53 @@ async def _startup() -> None:
     log.info("dictionary entries loaded; listening on %s:%s", config.HOST, config.PORT)
 
 
+# Headers Anthropic/the SDK legitimately need — not flagged as "unrecognized".
+# (Authorization / x-api-key are the provider secret and must pass through.)
+_REQUIRED_HEADERS = {
+    "authorization", "x-api-key", "content-type", "accept", "accept-language",
+    "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
+    "user-agent", "x-api-version",
+}
+_KNOWN_HEADER_PREFIXES = ("x-stainless-", "anthropic-", "sec-", "x-anonproxy-")
+_warned_headers: set[str] = set()
+
+
+def _scan_forward_headers(forwarded: dict[str, str]) -> None:
+    """Headers bypass body anonymization, so at least SCAN their values for leaks
+    and flag any unrecognized header once on the dashboard. We don't rewrite them
+    (that would break auth), but the user must know if a client sends real data
+    (Cookie, X-Internal-User, …) in a header."""
+    for k, v in forwarded.items():
+        kl = k.lower()
+        if kl in ("authorization", "x-api-key"):
+            continue  # the required provider secret — expected, scanning is noise
+        try:
+            anonymizer.scan_for_leaks(v, f"header:{kl}")
+        except Exception:  # noqa: BLE001
+            pass
+        if kl not in _REQUIRED_HEADERS and not kl.startswith(_KNOWN_HEADER_PREFIXES) \
+                and kl not in _warned_headers:
+            _warned_headers.add(kl)
+            events.emit_notice(f"forwarding unrecognized header '{kl}' un-anonymized", "header")
+
+
+def _redact_for_display(s: str) -> str:
+    """Redact secret-shaped substrings before showing a fail-open path on the
+    dashboard — an un-anonymized path must not be exposed verbatim to viewers."""
+    try:
+        out = s
+        for val, _etype in regex_detector.detect(s):
+            if len(val) >= 5:
+                out = out.replace(val, val[:2] + "…" + val[-2:])
+        return out
+    except Exception:  # noqa: BLE001
+        return "[redacted]"
+
+
 def _fwd_headers(request: Request) -> dict[str, str]:
-    return {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
+    fwd = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
+    _scan_forward_headers(fwd)
+    return fwd
 
 
 # Upstream response headers worth passing back to Claude Code (request-id,
@@ -499,7 +545,8 @@ async def passthrough(request: Request, path: str) -> Response:
     # body (a GET like /x?token=ghp_… leaks via the query), and scan the path +
     # query + body for secrets so the leak is at least logged, even though we
     # deliberately don't block or rewrite here.
-    events.emit_notice(f"forwarded un-anonymized request to /{path}", request.method)
+    events.emit_notice(f"forwarded un-anonymized request to /{_redact_for_display(path)}",
+                       request.method)
     if content:
         log.warning("passthrough forwards an un-anonymized %s body for /%s (%d bytes)",
                     request.method, path, len(content))

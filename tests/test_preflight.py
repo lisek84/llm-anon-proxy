@@ -34,6 +34,16 @@ def _me() -> str:
     return pwd.getpwuid(os.getuid()).pw_name
 
 
+def test_can_read_tristate():
+    # stat failure → unknown (None), never a silent "safe"
+    assert preflight._can_read(Path("/nonexistent/deep/zzz/x"), 424242, {434343}) is None
+    # a file I own and can reach → True
+    import os
+    f = Path(_MY_DATA) / "readable.txt"
+    f.write_text("x")
+    assert preflight._can_read(f, os.getuid(), set(os.getgroups())) is True
+
+
 def test_same_user_is_flagged():
     config.CLIENT_USER = _me()
     problems = preflight.check_isolation()
