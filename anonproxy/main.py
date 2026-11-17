@@ -518,6 +518,8 @@ async def passthrough(request: Request, path: str) -> Response:
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.request(request.method, f"{config.UPSTREAM_URL}/{path}",
                                     headers=headers, content=content,
-                                    params=dict(request.query_params))
+                                    # multi_items() (not dict) so repeated keys
+                                    # like ?tag=a&tag=b are forwarded faithfully.
+                                    params=request.query_params.multi_items())
     return Response(content=resp.content, status_code=resp.status_code,
                     media_type=resp.headers.get("content-type", "application/json"))

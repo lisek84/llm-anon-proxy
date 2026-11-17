@@ -59,6 +59,7 @@ async def _fake_upstream(scope, receive, send):
         if not msg.get("more_body"):
             break
     _received["body"] = body.decode("utf-8")
+    _received["query"] = scope.get("query_string", b"").decode("utf-8")
 
     # Build a surrogate the proxy must restore. The real IP is in the dictionary;
     # anonymize it the same way the proxy would.
@@ -198,6 +199,18 @@ async def test_passthrough_bodyless_get_emits_notice_and_scans_query():
         await client.get(f"/some/endpoint?token={ghp}")
     after = events.snapshot()["notices"]
     assert after > before, "no un-anonymized notice for a body-less GET passthrough"
+
+
+@pytest.mark.asyncio
+async def test_passthrough_preserves_repeated_query_keys():
+    # ?tag=a&tag=b must reach upstream as two params, not collapsed to one.
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        await client.get("/api?tag=production&tag=database")
+    from urllib.parse import parse_qsl
+    pairs = parse_qsl(_received["query"])
+    assert ("tag", "production") in pairs and ("tag", "database") in pairs
+    assert [v for k, v in pairs if k == "tag"] == ["production", "database"]
 
 
 @pytest.mark.asyncio
