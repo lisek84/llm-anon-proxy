@@ -17,6 +17,7 @@ output stays valid:
 """
 import hashlib
 import hmac
+import ipaddress
 import os
 import stat
 import string
@@ -132,6 +133,35 @@ def _fake_cidr(original: str, attempt: int, private: bool) -> str:
     octets = base.split(".")
     octets[3] = "0"
     return ".".join(octets) + "/" + prefix
+
+
+def _fake_ipv6(original: str, attempt: int, private: bool) -> str:
+    d = _digest("IP_ADDRESS6", original, attempt)
+    hx = [f"{(d[i] << 8) | d[i + 1]:x}" for i in range(0, 14, 2)]   # 7 hextets of entropy
+    if private:
+        # ULA fd00::/8 — unmistakably private, never globally routed.
+        raw = "fd00:" + ":".join(hx[:6]) + f":{1 + d[14] % 0xfffe:x}"
+    else:
+        # 2001:db8::/32 — RFC 3849 documentation prefix, never routed.
+        raw = "2001:db8:" + ":".join(hx[:5]) + f":{1 + d[14] % 0xfffe:x}"
+    return str(ipaddress.IPv6Address(raw))     # canonical/compressed form
+
+
+def _fake_ipv6_cidr(original: str, attempt: int, private: bool) -> str:
+    prefix = original.split("/")[-1] if "/" in original else "64"
+    base = _fake_ipv6(original, attempt, private)
+    try:
+        net = ipaddress.ip_network(f"{base}/{prefix}", strict=False)
+        return f"{net.network_address}/{prefix}"
+    except ValueError:
+        return f"{base}/{prefix}"
+
+
+def _is_private_ip6(ip: str) -> bool:
+    try:
+        return ipaddress.IPv6Address(ip.split("/")[0]).is_private
+    except ValueError:
+        return False
 
 
 def _fake_email(original: str, attempt: int) -> str:
@@ -264,8 +294,12 @@ def generate(original: str, entity_type: str, attempt: int = 0) -> str:
     if entity_type == "HOSTNAME":
         return _fake_hostname(original, attempt)
     if entity_type == "IP_ADDRESS":
+        if ":" in original:
+            return _fake_ipv6(original, attempt, _is_private_ip6(original))
         return _fake_ipv4(original, attempt, _is_private_ip(original))
     if entity_type == "CIDR":
+        if ":" in original:
+            return _fake_ipv6_cidr(original, attempt, _is_private_ip6(original))
         return _fake_cidr(original, attempt, _is_private_ip(original))
     if entity_type in ("EMAIL", "EMAIL_ADDRESS"):
         return _fake_email(original, attempt)

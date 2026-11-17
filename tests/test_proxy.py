@@ -187,6 +187,20 @@ async def test_document_text_and_tool_description_anonymized():
 
 
 @pytest.mark.asyncio
+async def test_passthrough_bodyless_get_emits_notice_and_scans_query():
+    # An unknown endpoint hit with GET (no body) but a secret in the query must
+    # still raise a dashboard notice and be scanned — not silently forwarded.
+    from anonproxy import events
+    ghp = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
+    before = events.snapshot()["notices"]
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        await client.get(f"/some/endpoint?token={ghp}")
+    after = events.snapshot()["notices"]
+    assert after > before, "no un-anonymized notice for a body-less GET passthrough"
+
+
+@pytest.mark.asyncio
 async def test_inline_tool_addition_block_anonymized():
     # inline-tools beta: a tool declared inside a message as a `tool_addition`
     # block must have its free-text fields scrubbed too (not forwarded as-is),

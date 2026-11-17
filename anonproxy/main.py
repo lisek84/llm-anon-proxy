@@ -495,14 +495,22 @@ async def passthrough(request: Request, path: str) -> Response:
         log.warning("blocked un-anonymized endpoint /%s (ANONPROXY_BLOCK_UNKNOWN=true)", path)
         return _blocked_response(f"endpoint /{path} is not anonymized and blocking is on",
                                  status=403)
+    # Unknown endpoint — forwarded WITHOUT anonymization. Surface it regardless of
+    # body (a GET like /x?token=ghp_… leaks via the query), and scan the path +
+    # query + body for secrets so the leak is at least logged, even though we
+    # deliberately don't block or rewrite here.
+    events.emit_notice(f"forwarded un-anonymized request to /{path}", request.method)
     if content:
         log.warning("passthrough forwards an un-anonymized %s body for /%s (%d bytes)",
                     request.method, path, len(content))
-        events.emit_notice(f"forwarded un-anonymized request to /{path}", request.method)
-        try:
-            anonymizer.scan_for_leaks(content.decode("utf-8", "replace"), f"passthrough:{path}")
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        query = str(request.url.query or "")
+        scanned = path + ("?" + query if query else "")
+        if content:
+            scanned += "\n" + content.decode("utf-8", "replace")
+        anonymizer.scan_for_leaks(scanned, f"passthrough:{path}")
+    except Exception:  # noqa: BLE001
+        pass
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.request(request.method, f"{config.UPSTREAM_URL}/{path}",
                                     headers=headers, content=content,

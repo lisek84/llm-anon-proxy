@@ -55,3 +55,27 @@ async def test_fail_closed_raises():
     config.LLM_FAIL_CLOSED = True
     with pytest.raises(llm_detector.LLMUnavailable):
         await main._anon_text("visit example.com now", "test")
+
+
+# ── Ollama response validation (no HTTP; parse layer directly) ────────────────
+
+def test_valid_json_without_entities_key_is_a_failure():
+    # {"status":"ok"} is syntactically fine but omits `entities` — must raise,
+    # not be mistaken for an empty "nothing found" result (would KeyError later).
+    with pytest.raises(llm_detector.LLMUnavailable):
+        llm_detector._parse_entities('{"status":"ok"}', "some host text here")
+
+
+def test_entities_not_a_list_is_a_failure():
+    with pytest.raises(llm_detector.LLMUnavailable):
+        llm_detector._parse_entities('{"entities":"nope"}', "some host text here")
+
+
+def test_empty_entities_is_a_normal_empty_result():
+    assert llm_detector._parse_entities('{"entities":[]}', "text") == []
+
+
+def test_non_string_entity_fields_are_skipped_not_crash():
+    raw = '{"entities":[{"text":123,"type":"HOSTNAME"},{"text":"of-db01","type":"HOSTNAME"}]}'
+    out = llm_detector._parse_entities(raw, "connect to of-db01 now")
+    assert out == [("of-db01", "HOSTNAME")]          # bad element skipped, no exception

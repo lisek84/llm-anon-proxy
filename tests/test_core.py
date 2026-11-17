@@ -393,3 +393,49 @@ def test_risky_dictionary_literal_flagged():
     assert dictionary._is_risky_literal("api")
     assert not dictionary._is_risky_literal("acme-crm.pl")
     assert not dictionary._is_risky_literal("db-prod-01")
+
+
+# ── IPv6 ──────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("text,ip", [
+    ("server at 2a01:4f8:1c1c:abcd::5 up", "2a01:4f8:1c1c:abcd::5"),
+    ("ula fd00:1234:5::9 host", "fd00:1234:5::9"),
+    ("link fe80::1ff:fe23:4567:890a nic", "fe80::1ff:fe23:4567:890a"),
+    ("full 2a01:4f8:1c1c:abcd:0:0:0:5 ok", "2a01:4f8:1c1c:abcd:0:0:0:5"),
+    ("mapped ::ffff:203.0.113.9 x", "::ffff:203.0.113.9"),
+])
+def test_ipv6_detected_and_roundtrips(text, ip):
+    anon, back = rt(text)
+    assert ip not in anon
+    assert back == text
+
+
+def test_ipv6_cidr_detected_and_roundtrips():
+    anon, back = rt("route fd00:1234::/48 via gw")
+    assert "fd00:1234::/48" not in anon
+    assert "/48" in anon                 # prefix length preserved
+    assert back == "route fd00:1234::/48 via gw"
+
+
+def test_ipv6_surrogate_ranges():
+    # global → documentation prefix 2001:db8::/32; private (ULA/link-local) → fd00::/8
+    import ipaddress
+    glob = ipaddress.ip_address(surrogates.generate("2a01:4f8:1c1c:abcd::5", "IP_ADDRESS"))
+    priv = ipaddress.ip_address(surrogates.generate("fd00:1234:5::9", "IP_ADDRESS"))
+    assert glob in ipaddress.ip_network("2001:db8::/32")
+    assert priv.is_private
+
+
+@pytest.mark.parametrize("text", [
+    "loopback ::1 only",
+    "google dns 2001:4860:4860::8888 resolver",
+    "mac aa:bb:cc:dd:ee:ff is not an ip",
+    "time 12:34:56 is not an ip",
+])
+def test_ipv6_allowlist_and_false_positives_not_anonymized_as_ip(text):
+    # ::1 and public resolvers are allowlisted; MAC/time must not become an IP.
+    got = {t: ty for t, ty in __import__("anonproxy.regex_detector",
+                                         fromlist=["detect"]).detect(text)}
+    assert "::1" not in got and "2001:4860:4860::8888" not in got
+    assert got.get("aa:bb:cc:dd:ee:ff") in (None, "MAC_ADDRESS")
+    assert "12:34:56" not in got

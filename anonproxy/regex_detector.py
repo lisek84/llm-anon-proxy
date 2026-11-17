@@ -5,6 +5,7 @@ Returns (value, entity_type) pairs where `value` is the exact substring to
 replace — for assignment-style secrets only the value is captured, never the
 surrounding key. The anonymizer resolves overlaps by replacing longest first.
 """
+import ipaddress
 import re
 
 # Public tooling/ecosystem domains — not the user's own infrastructure, and the
@@ -113,6 +114,28 @@ _IP_POST = r"(?!\d)(?!\.\d)"
 _add("CIDR", rf"{_IP_PRE}{_IP}/\d{{1,2}}(?!\d)")
 _add("IP_ADDRESS", rf"{_IP_PRE}{_IP}{_IP_POST}")
 
+# IPv6. The regex is a permissive-but-bounded candidate; every match is then
+# validated with `ipaddress` in detect(), which rejects MACs, times and hex runs
+# far more reliably than regex alone. Covers full, compressed (::) and
+# v4-mapped/embedded forms. Order: CIDR before address so fd00::/48 is one unit.
+_H = r"[0-9A-Fa-f]{1,4}"
+_IPV6 = (
+    rf"::(?:ffff(?::0{{1,4}})?:)?{_IP}"           # ::ffff:1.2.3.4 (v4-mapped) — first,
+    rf"|(?:{_H}:){{1,4}}:{_IP}"                   # 1:2:3:4::1.2.3.4 (embedded v4) so the
+    rf"|(?:{_H}:){{7}}{_H}"                       # dotted tail is consumed whole, not as hex
+    rf"|(?:{_H}:){{1,7}}:"                        # 1::   1:2:3:4:5:6:7::
+    rf"|(?:{_H}:){{1,6}}:{_H}"                    # 1::8  1:2:3:4:5:6::8
+    rf"|(?:{_H}:){{1,5}}(?::{_H}){{1,2}}"
+    rf"|(?:{_H}:){{1,4}}(?::{_H}){{1,3}}"
+    rf"|(?:{_H}:){{1,3}}(?::{_H}){{1,4}}"
+    rf"|(?:{_H}:){{1,2}}(?::{_H}){{1,5}}"
+    rf"|{_H}:(?::{_H}){{1,6}}"
+    rf"|:(?::{_H}){{1,7}}"                        # ::8  ::2:3:4:5:6:7:8
+)
+_IP6_PRE = r"(?<![0-9A-Za-z:.])"
+_add("CIDR", rf"{_IP6_PRE}(?:{_IPV6})/\d{{1,3}}(?!\d)")
+_add("IP_ADDRESS", rf"{_IP6_PRE}(?:{_IPV6})(?![0-9A-Za-z:/])")
+
 # ── Email + domains ───────────────────────────────────────────────────────────
 _add("EMAIL", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
@@ -164,6 +187,17 @@ _IP_ALLOWLIST = {
     "8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "::1",
 }
 
+# IPv6 we never anonymize, stored in normalized form for comparison (loopback,
+# unspecified, public resolvers: Google, Cloudflare, Quad9).
+_IP6_ALLOWLIST = {
+    str(ipaddress.ip_address(x)) for x in (
+        "::1", "::",
+        "2001:4860:4860::8888", "2001:4860:4860::8844",   # Google
+        "2606:4700:4700::1111", "2606:4700:4700::1001",   # Cloudflare
+        "2620:fe::fe", "2620:fe::9",                       # Quad9
+    )
+}
+
 # User-configurable allowlist (the dictionary's `allow:` section). Public
 # services the model should keep seeing (hetzner.com, docker.io, grafana.com…).
 _USER_ALLOW: set[str] = set()
@@ -190,7 +224,19 @@ def detect(text: str) -> list[tuple[str, str]]:
                 continue
             if etype == "EMAIL" and _DSN_BEFORE.search(text[max(0, mstart - 256):mstart]):
                 continue  # "pass@host" in a DSN — not an email (window keeps this O(1))
-            if etype == "IP_ADDRESS" and (val in _IP_ALLOWLIST or val in _USER_ALLOW):
+            if etype in ("IP_ADDRESS", "CIDR") and ":" in val:
+                # IPv6 (or v6 CIDR): validate with ipaddress — this is what
+                # actually rejects regex false positives (MACs, times, hex).
+                try:
+                    host = val.split("/")[0]
+                    norm = str(ipaddress.ip_address(host))
+                    if "/" in val:
+                        ipaddress.ip_network(val, strict=False)
+                except ValueError:
+                    continue
+                if norm in _IP6_ALLOWLIST or val.lower() in _USER_ALLOW:
+                    continue
+            elif etype == "IP_ADDRESS" and (val in _IP_ALLOWLIST or val in _USER_ALLOW):
                 continue
             if etype == "DOMAIN":
                 low = val.lower().rstrip(".")

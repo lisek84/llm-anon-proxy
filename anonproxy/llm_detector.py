@@ -77,22 +77,33 @@ async def detect(text: str) -> list[tuple[str, str]]:
         # actually blocks, instead of silently degrading to regex+dict.
         raise LLMUnavailable(str(exc)) from exc
 
-    # A valid {"entities": []} is a normal "nothing found" result; an unparseable
-    # or malformed response is a DETECTOR FAILURE, not an empty result — raise so
-    # fail-closed blocks instead of silently trusting regex+dict alone.
+    return _parse_entities(raw, text)
+
+
+def _parse_entities(raw: str, text: str) -> list[tuple[str, str]]:
+    """Parse + validate Ollama's JSON reply. A valid {"entities": []} is a normal
+    "nothing found" result; anything malformed (unparseable, no `entities` key,
+    `entities` not a list) is a DETECTOR FAILURE, not an empty result — raise so
+    fail-closed blocks instead of silently trusting regex+dict alone."""
     try:
         data = json.loads(_extract_json(raw))
     except (ValueError, json.JSONDecodeError) as exc:
         raise LLMUnavailable(f"LLM returned unparseable JSON: {exc}") from exc
-    if not isinstance(data, dict) or not isinstance(data.get("entities", []), list):
+    # Require the `entities` key explicitly and as a list. A syntactically valid
+    # object that omits it (e.g. {"status":"ok"}) would otherwise slip through and
+    # KeyError later; treat it as a failure instead.
+    if not isinstance(data, dict) or not isinstance(data.get("entities"), list):
         raise LLMUnavailable("LLM response has no valid 'entities' list")
 
     out: list[tuple[str, str]] = []
     for e in data["entities"]:
         if not isinstance(e, dict):
             continue
-        val = (e.get("text") or "").strip()
-        etype = (e.get("type") or "").strip().upper()
+        val, etype = e.get("text"), e.get("type")
+        if not isinstance(val, str) or not isinstance(etype, str):
+            continue  # a non-string field would crash .strip(); skip the element
+        val = val.strip()
+        etype = etype.strip().upper()
         if val and val in text and etype in _ALLOWED:
             out.append((val, etype))
     return out
