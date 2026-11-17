@@ -63,7 +63,7 @@ environment and writes all state next to the compose file:
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml   # edit with YOUR values
 
-getent passwd 991                            # must print nothing: 991 must NOT be the agent's user
+id 991; getent passwd 991                    # both must print nothing (also covers LDAP/NSS)
 sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml  # originals, agent-unreadable
 sudo install -d -o 991 -g 991 -m 0700 data   # vault dir owned by the proxy UID, not you
 

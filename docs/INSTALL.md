@@ -22,7 +22,7 @@ cp dictionary.example.yaml dictionary.yaml     # then edit with YOUR values
 
 # 1) Make sure 991 isn't already the agent's user; if it is, pick another free
 #    UID and use it everywhere below and as ANONPROXY_UID/ANONPROXY_GID.
-getent passwd 991        # expect NO output;  id -u  shows your own uid for comparison
+id 991; getent passwd 991    # both expect NO output (covers LDAP/NSS too); `id -u` = your uid
 
 # 2) Lock the dictionary (originals) and create the vault dir, both owned by 991.
 #    Edit the dictionary later with:  sudo -e dictionary.yaml

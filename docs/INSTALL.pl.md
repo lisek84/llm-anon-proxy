@@ -22,7 +22,7 @@ cp dictionary.example.yaml dictionary.yaml     # potem uzupełnij SWOIMI wartoś
 
 # 1) Upewnij się, że 991 nie należy już do użytkownika agenta; jeśli tak — wybierz
 #    inny wolny UID i użyj go wszędzie poniżej oraz jako ANONPROXY_UID/ANONPROXY_GID.
-getent passwd 991        # oczekiwany BRAK wyniku;  id -u  pokazuje Twój uid do porównania
+id 991; getent passwd 991    # oba bez wyniku (obejmuje też LDAP/NSS);  id -u  = Twój uid
 
 # 2) Zabezpiecz słownik (oryginały) i utwórz katalog vaulta, oba jako 991.
 #    Słownik edytuj potem przez:  sudo -e dictionary.yaml
