@@ -184,3 +184,33 @@ async def test_document_text_and_tool_description_anonymized():
     doc = out["messages"][0]["content"][0]["source"]["data"]
     assert "of-prod-db01" not in doc and "185.12.34.56" not in doc
     assert "example.com" not in out["tools"][0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_inline_tool_addition_block_anonymized():
+    # inline-tools beta: a tool declared inside a message as a `tool_addition`
+    # block must have its free-text fields scrubbed too (not forwarded as-is),
+    # while the tool name and schema structure stay intact so calls resolve.
+    body = {
+        "model": "m", "messages": [
+            {"role": "user", "content": [
+                {"type": "tool_addition",
+                 "tool": {
+                     "type": "tool_definition",
+                     "name": "ssh_run",
+                     "description": "run a command on of-prod-db01 (185.12.34.56)",
+                     "input_schema": {
+                         "type": "object",
+                         "properties": {
+                             "host": {"type": "string",
+                                      "description": "target like example.com"}},
+                         "required": ["host"]}}}]}],
+    }
+    from anonproxy import main
+    out = await main._anon_body(body)
+    tool = out["messages"][0]["content"][0]["tool"]
+    assert tool["name"] == "ssh_run"                      # name untouched
+    assert tool["input_schema"]["required"] == ["host"]   # structure untouched
+    assert "of-prod-db01" not in tool["description"]
+    assert "185.12.34.56" not in tool["description"]
+    assert "example.com" not in tool["input_schema"]["properties"]["host"]["description"]

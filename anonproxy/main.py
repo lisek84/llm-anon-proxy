@@ -154,6 +154,12 @@ async def _anon_block(block: dict, source: str) -> dict:
         c = block.get("content")
         if isinstance(c, list):
             block["content"] = [await _anon_block(b, source) for b in c]
+    elif t == "tool_addition":
+        # Inline tool definition (inline-tools beta: a tool declared in a message
+        # instead of the top-level `tools` array). Treat it exactly like a
+        # top-level tool def — anonymize only free-text description/title fields,
+        # leaving tool names and JSON-Schema structure intact so calls resolve.
+        await _anon_schema_text(block)
     elif t == "image":
         _warn_unanonymized("image")  # screenshots may contain real data
     elif t is not None:
