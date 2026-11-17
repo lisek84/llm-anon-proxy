@@ -16,10 +16,17 @@ git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # potem uzupełnij SWOIMI wartościami
 
 # Kontener działa jako DEDYKOWANY UID (991), celowo NIE Twój użytkownik — to ten
-# osobny właściciel katalogu vaulta (0700) powstrzymuje agenta Claude Code
-# (działającego jako Ty) od odczytu mappings.db / secret.key. Utwórz ./data jako
-# ten UID (raz z sudo). NIE mapuj kontenera na $(id -u) — to znosi izolację.
-# Nadpisuj tylko na inny UID spoza agenta:  ANONPROXY_UID=… ANONPROXY_GID=…
+# osobny właściciel powstrzymuje agenta Claude Code (działającego jako Ty) od
+# odczytu vaulta ORAZ słownika (zawiera Twoje prawdziwe wartości). NIE mapuj
+# kontenera na $(id -u) — to znosi izolację.
+
+# 1) Upewnij się, że 991 nie należy już do użytkownika agenta; jeśli tak — wybierz
+#    inny wolny UID i użyj go wszędzie poniżej oraz jako ANONPROXY_UID/ANONPROXY_GID.
+getent passwd 991        # oczekiwany BRAK wyniku;  id -u  pokazuje Twój uid do porównania
+
+# 2) Zabezpiecz słownik (oryginały) i utwórz katalog vaulta, oba jako 991.
+#    Słownik edytuj potem przez:  sudo -e dictionary.yaml
+sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml
 sudo install -d -o 991 -g 991 -m 0700 data
 
 docker compose up -d                           # buduje + startuje proxy (słownik + regex)

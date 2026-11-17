@@ -62,8 +62,11 @@ environment and writes all state next to the compose file:
 ```bash
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml   # edit with YOUR values
-sudo install -d -o 991 -g 991 -m 0700 data   # vault dir owned by the proxy's own UID,
-                                             # NOT your user — so the agent can't read it
+
+getent passwd 991                            # must print nothing: 991 must NOT be the agent's user
+sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml  # originals, agent-unreadable
+sudo install -d -o 991 -g 991 -m 0700 data   # vault dir owned by the proxy UID, not you
+
 docker compose up -d                         # proxy (dict + regex); add: --profile llm for Ollama
 ./claude_anon                                # in your working console
 ```

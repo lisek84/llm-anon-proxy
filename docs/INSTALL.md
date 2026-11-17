@@ -15,11 +15,18 @@ state is written next to the compose file.
 git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # then edit with YOUR values
 
-# The container runs as a DEDICATED UID (991), deliberately NOT your user —
-# that separate owner on the 0700 vault dir is what keeps the Claude Code agent
-# (running as you) from reading mappings.db / secret.key. Create ./data owned by
-# it (needs sudo once). Do NOT remap the container to $(id -u): that defeats the
-# isolation. Override only to another NON-agent uid:  ANONPROXY_UID=… ANONPROXY_GID=…
+# The container runs as a DEDICATED UID (991), deliberately NOT your user — that
+# separate owner is what keeps the Claude Code agent (running as you) from reading
+# the vault AND the dictionary (which holds your real values). Do NOT remap the
+# container to $(id -u): that defeats the isolation.
+
+# 1) Make sure 991 isn't already the agent's user; if it is, pick another free
+#    UID and use it everywhere below and as ANONPROXY_UID/ANONPROXY_GID.
+getent passwd 991        # expect NO output;  id -u  shows your own uid for comparison
+
+# 2) Lock the dictionary (originals) and create the vault dir, both owned by 991.
+#    Edit the dictionary later with:  sudo -e dictionary.yaml
+sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml
 sudo install -d -o 991 -g 991 -m 0700 data
 
 docker compose up -d                           # builds + starts the proxy (dict + regex)
