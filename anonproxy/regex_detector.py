@@ -8,6 +8,9 @@ surrounding key. The anonymizer resolves overlaps by replacing longest first.
 import ipaddress
 import re
 
+from . import plid
+from .config import config
+
 # Public tooling/ecosystem domains — not the user's own infrastructure, and the
 # model needs them for context (they also fill Claude Code's own system prompt).
 # Covers the domain itself and any subdomain. Your real domains go in the dict.
@@ -136,6 +139,19 @@ _IP6_PRE = r"(?<![0-9A-Za-z:.])"
 _add("CIDR", rf"{_IP6_PRE}(?:{_IPV6})/\d{{1,3}}(?!\d)")
 _add("IP_ADDRESS", rf"{_IP6_PRE}(?:{_IPV6})(?![0-9A-Za-z:/])")
 
+# ── Polish national identifiers (validated by checksum in detect()) ───────────
+# Bare, low false-positive after validation (date+checksum / 14-digit checksum):
+_add("PESEL", r"\b\d{11}\b")
+_add("REGON", r"\b\d{14}\b")
+# NIP / REGON-9 only in a clear context — their 10/9-digit length otherwise
+# collides with timestamps/phone numbers at ~9-10% even after the checksum:
+_add("NIP", r"(?i)\bNIP\b[\s:]*(?P<v>\d{10})\b", "v")
+_add("NIP", r"(?i)\bPL(?P<v>\d{10})\b", "v")                 # EU VAT form
+_add("REGON", r"(?i)\bREGON\b[\s:]*(?P<v>\d{9})\b", "v")
+# Bare 10-digit NIP / 9-digit REGON — gated behind DETECT_PL_ID_BARE:
+_add("NIP_BARE", r"\b\d{10}\b")
+_add("REGON_BARE", r"\b\d{9}\b")
+
 # ── Email + domains ───────────────────────────────────────────────────────────
 _add("EMAIL", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
@@ -250,9 +266,24 @@ def detect(text: str) -> list[tuple[str, str]]:
                     low == d or low.endswith("." + d) for d in _USER_ALLOW
                 ):
                     continue
+            if etype in _PL_TYPES:
+                if not config.DETECT_PL_ID:
+                    continue
+                base = "NIP" if etype.startswith("NIP") else \
+                       "REGON" if etype.startswith("REGON") else "PESEL"
+                ok = (plid.valid_pesel(val) if base == "PESEL" else
+                      plid.valid_nip(val) if base == "NIP" else plid.valid_regon(val))
+                if not ok:
+                    continue
+                if etype.endswith("_BARE") and not config.DETECT_PL_ID_BARE:
+                    continue
+                etype = base
             key = (val, etype)
             if key in seen:
                 continue
             seen.add(key)
             out.append((val, etype))
     return out
+
+
+_PL_TYPES = frozenset({"PESEL", "NIP", "REGON", "NIP_BARE", "REGON_BARE"})

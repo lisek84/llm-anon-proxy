@@ -139,6 +139,7 @@ const dot=document.getElementById('dot'), auto=document.getElementById('auto');
 const COLORS={IP_ADDRESS:'#f98181',CIDR:'#f98181',DOMAIN:'#f6a560',HOSTNAME:'#ffd479',
   EMAIL:'#79d0ff',USERNAME:'#79d0ff',PERSON:'#f392d0',ORGANIZATION:'#c58bf2',
   KEYWORD:'#b6e36b',CREDENTIAL:'#ff6b6b',TOKEN:'#ff8f6b',HASH:'#ffb36b',PATH:'#6be3c0',
+  PESEL:'#f392d0',NIP:'#f392d0',REGON:'#f392d0',
   MAC_ADDRESS:'#f6a560',URL:'#79a9ff',ENCODED_B64:'#9aa5ff',ENCODED_B32:'#9aa5ff',
   ENCODED_HEX:'#9aa5ff',URL_ENCODED:'#9aa5ff',JSON_ESCAPED:'#9aa5ff',OTHER:'#9aa'};
 const stats={}; let reqs=0, total=0, notices=0, empty=document.getElementById('empty');

@@ -26,6 +26,17 @@ class Config:
     #       k7f2d9.<base>.example. Hides the names, keeps structure + consistency.
     SUBDOMAIN_POLICY: str = os.getenv("ANONPROXY_SUBDOMAIN_POLICY", "preserve").lower()
 
+    # Polish national identifiers (PESEL / NIP / REGON), detected by checksum.
+    #   DETECT_PL_ID (default on): PESEL + REGON-14 bare (low false-positive), and
+    #     NIP / REGON-9 only in a clear context (`NIP: …`, `PL1234567890`,
+    #     `REGON: …`) — their 10/9-digit length otherwise collides with unix
+    #     timestamps and phone numbers at ~9-10%.
+    #   DETECT_PL_ID_BARE (default off): ALSO flag bare 10-digit NIP / 9-digit
+    #     REGON by checksum — higher recall, but accept ~9% over-anonymization of
+    #     timestamps/phones (safe direction: round-trips, never leaks).
+    DETECT_PL_ID: bool = os.getenv("ANONPROXY_DETECT_PL_ID", "true").lower() == "true"
+    DETECT_PL_ID_BARE: bool = os.getenv("ANONPROXY_DETECT_PL_ID_BARE", "false").lower() == "true"
+
     DATA_DIR: Path = DATA_DIR
     DB_PATH: Path = Path(os.getenv("ANONPROXY_DB", str(DATA_DIR / "mappings.db")))
 

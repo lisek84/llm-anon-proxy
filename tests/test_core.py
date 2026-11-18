@@ -93,6 +93,14 @@ def test_subdomain_mask_policy_hides_labels(monkeypatch):
     assert sub == surrogates.generate("prod-db01.acme.pl", "DOMAIN")  # deterministic
 
 
+def test_pesel_roundtrips_through_pipeline():
+    from anonproxy import plid
+    pesel = plid.fake_pesel(bytes(range(3, 19)))
+    anon, back = rt(f"obywatel {pesel} w rejestrze")
+    assert pesel not in anon
+    assert back == f"obywatel {pesel} w rejestrze"
+
+
 def test_subdomain_mask_constant_length(monkeypatch):
     # The masked label must not leak the original name's length.
     monkeypatch.setattr(config, "SUBDOMAIN_POLICY", "mask")
@@ -346,6 +354,10 @@ def test_surrogates_are_shell_inert():
         ("TOKEN", ["ghp_" + "A" * 36, "sk_live_" + "x" * 24, "random-looking-token-123456"]),
         ("MAC_ADDRESS", ["aa:bb:cc:dd:ee:ff"]),
         ("PATH", ["/var/www/secret", "/opt/$HOME/../etc"]),
+        ("PESEL", [surrogates.plid.fake_pesel(bytes(range(16)))]),
+        ("NIP", [surrogates.plid.fake_nip(bytes(range(16)))]),
+        ("REGON", [surrogates.plid.fake_regon9(bytes(range(16))),
+                   surrogates.plid.fake_regon14(bytes(range(16)))]),
     ]
     for etype, originals in cases:
         for original in originals:

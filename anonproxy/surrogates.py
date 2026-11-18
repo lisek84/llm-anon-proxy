@@ -22,6 +22,8 @@ import os
 import stat
 import string
 
+from . import plid
+
 from .config import config
 
 _secret: bytes | None = None
@@ -328,6 +330,13 @@ def generate(original: str, entity_type: str, attempt: int = 0) -> str:
         if ":" in original:
             return _fake_ipv6_cidr(original, attempt, _is_private_ip6(original))
         return _fake_cidr(original, attempt, _is_private_ip(original))
+    if entity_type == "PESEL":
+        return plid.fake_pesel(_digest("PESEL", original, attempt))
+    if entity_type == "NIP":
+        return plid.fake_nip(_digest("NIP", original, attempt))
+    if entity_type == "REGON":
+        dig = _digest("REGON", original, attempt)
+        return plid.fake_regon14(dig) if len(original) == 14 else plid.fake_regon9(dig)
     if entity_type in ("EMAIL", "EMAIL_ADDRESS"):
         return _fake_email(original, attempt)
     if entity_type == "USERNAME":

@@ -112,11 +112,25 @@ Edits are picked up on proxy restart.
 
 ## What gets replaced — and what doesn't
 
-Replaced: dictionary values; IPs, CIDRs, MACs, emails, domains; API keys and
-tokens (AWS, GitHub, Stripe, Slack, GitLab, Google, JWT); PEM private keys;
-crypt/htpasswd hashes; and assignment-style secrets (`password:`,
+Replaced: dictionary values; IPs (v4 **and** v6), CIDRs, MACs, emails, domains;
+API keys and tokens (AWS, GitHub, Stripe, Slack, GitLab, Google, JWT); PEM
+private keys; crypt/htpasswd hashes; and assignment-style secrets (`password:`,
 `PGPASSWORD=`, `mysql -p…`, `define('DB_PASSWORD', …)`, `requirepass`, DSN
 `user:pass@host`, `Bearer …`).
+
+Polish national identifiers, validated by checksum (so a random number isn't
+mistaken for one), on by default (`ANONPROXY_DETECT_PL_ID`):
+
+* **PESEL** (11-digit, checksum + encoded birth date) and **REGON-14** — caught
+  bare; false-positive rate ~1–2% of 11/14-digit runs.
+* **NIP** (10) and **REGON-9** — caught only in a clear context (`NIP: …`,
+  `PL1234567890`, `REGON: …`), because a bare 10/9-digit number collides with
+  unix timestamps and phone numbers at ~9–10%. Set
+  `ANONPROXY_DETECT_PL_ID_BARE=true` to also catch them bare (higher recall, that
+  ~9% over-anonymization — which still round-trips, so it never leaks).
+
+Surrogates are checksum-valid lookalikes (e.g. a fake PESEL that still validates),
+digit-only so they stay shell-safe.
 
 Left intact on purpose: loopback and well-known IPs (`127.0.0.1`, `8.8.8.8`,
 `169.254.169.254`…), and tooling domains (`anthropic.com`, `github.com`,
