@@ -1,0 +1,61 @@
+# Ready-made demo dictionary — matches the fake data planted by
+# demo/setup-demo-server.sh. Use it only for the demo:
+#   ANONPROXY_DICT=demo/dictionary.demo.yaml python -m anonproxy.preview < file
+#
+# NOTE what is NOT here: passwords, API tokens, Slack webhooks, PEM keys and
+# Polish national IDs (PESEL/NIP/REGON) are caught automatically by the regex +
+# checksum layers — you never list secrets. The dictionary is only for the
+# things a scanner can't infer: your domains, hostnames, internal IPs, service
+# accounts, brand names and sensitive paths.
+
+domains:
+  - acme-crm.pl
+  - sklep-kowalski.pl
+  - sniadanie.com
+
+hosts:
+  - acme-prod-01
+  - db-prod-01
+  - cache-redis-01
+  - web-fra-01
+  - backup-node-07
+  - edge-gw-fra1
+
+ips:
+  - 10.14.8.10
+  - 10.14.8.11
+  - 10.14.8.12
+  - 10.14.8.13
+  - 10.14.8.20
+  - 185.12.34.56
+  - fd00:14:8::20
+
+cidrs:
+  - 10.14.8.0/24
+
+usernames:
+  - acme_app
+  - wpadmin
+  - pgadmin
+  - deploy_bot
+
+organizations:
+  - Acme
+  - Kowalski
+
+emails:
+  - admin@acme-crm.pl
+  - deploy@acme-crm.pl
+
+keywords:
+  - acme
+
+paths:
+  - /opt/acme
+
+# Public services the model should keep seeing (never anonymized).
+allow:
+  - github.com
+  - docker.io
+  - ubuntu.com
+  - letsencrypt.org

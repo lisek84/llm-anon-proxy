@@ -95,6 +95,8 @@ _add("CREDENTIAL", r"(?i)\brequirepass\s+(?P<v>'[^']+'|\"[^\"]+\"|\S+)", "v")
 _add("CREDENTIAL", r"(?i)\bsshpass\s+-p\s*(?P<v>'[^']+'|\"[^\"]+\"|\S+)", "v")
 # Authorization: Bearer / Basic
 _add("CREDENTIAL", r"(?i)\b(?:Bearer|Basic)\s+(?P<v>[A-Za-z0-9+/._~=-]{16,})", "v")
+# HAProxy stats auth  (stats auth <user>:<password>) — keyword-gated, so no FP
+_add("CREDENTIAL", r"(?i)\bstats\s+auth\s+[^\s:]+:(?P<v>\S+)", "v")
 # Credentials embedded in URLs: proto://user:pass@host
 _add("CREDENTIAL", r"(?i)[a-z][a-z0-9+.\-]*://[^:/\s]+:(?P<v>[^@/\s]+)@", "v")
 

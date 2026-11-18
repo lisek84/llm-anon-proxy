@@ -141,6 +141,7 @@ _AKIA = "AKIA" + "IOSFODNN7EXAMPLE"
     ("Authorization: Bearer abcDEF123456ghiJKL789mnoPQR", "abcDEF123456ghiJKL789mnoPQR"),
     ("admin:$apr1$Kq8x$J7t0Ffakehashvalue12", "$apr1$Kq8x$J7t0Ffakehashvalue12"),
     ("requirepass r3d1sP4ss", "r3d1sP4ss"),
+    ("stats auth pgadmin:Haproxy_St4ts!", "Haproxy_St4ts!"),
     ("define( 'DB_PASSWORD', 'wpP4ss_x1' );", "wpP4ss_x1"),
     (f"key is {_GHP}", _GHP),
     (f"STRIPE={_SK_LIVE}", _SK_LIVE),
