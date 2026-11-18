@@ -1,0 +1,19 @@
+# Use an Ollama that runs NATIVELY on the host (not the bundled `ollama`
+# container) — e.g. Ollama on your WSL/Linux host with the model already pulled.
+#
+# The proxy joins the host network so it can reach a host Ollama that only
+# listens on 127.0.0.1:11434 (Ollama's default), without exposing it or
+# reconfiguring it. The proxy still binds loopback only (ANONPROXY_HOST).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.hostollama.yml up -d
+#   # (do NOT add --profile llm — that would also start the bundled ollama container)
+#
+# Needs Compose >= 2.24 for the `!reset` tag (host networking can't publish ports).
+services:
+  proxy:
+    network_mode: host
+    ports: !reset []
+    environment:
+      ANONPROXY_HOST: "127.0.0.1"                      # bind host loopback only
+      ANONPROXY_LLM: "true"
+      ANONPROXY_OLLAMA_HOST: "http://127.0.0.1:11434"  # the host's native Ollama

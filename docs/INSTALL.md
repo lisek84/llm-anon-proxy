@@ -117,6 +117,17 @@ ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.cpu.ym
 
 Change the model with `ANONPROXY_OLLAMA_MODEL=qwen3.5:9b`.
 
+**Already running Ollama natively on the host** (e.g. in WSL, model pulled)? Don't
+start the bundled container — join the host network so the proxy reaches the
+host's Ollama on `127.0.0.1:11434` (no `--profile llm`):
+
+```bash
+ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.hostollama.yml up -d
+```
+
+(Verified on WSL: the containerised proxy's LLM layer reaches a loopback-only
+host Ollama; the proxy still binds `127.0.0.1:8787` only.)
+
 ### Option B — Native (WSL / Linux, no Docker) — this is the setup here
 
 Installs Ollama as a service and pulls the model.

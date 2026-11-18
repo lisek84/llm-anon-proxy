@@ -118,6 +118,17 @@ ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.cpu.ym
 
 Zmień model przez `ANONPROXY_OLLAMA_MODEL=qwen3.5:9b`.
 
+**Masz już Ollamę natywnie na hoście** (np. w WSL, z pobranym modelem)? Nie
+uruchamiaj dołączonego kontenera — wejdź w sieć hosta, żeby proxy sięgnęło do
+Ollamy hosta na `127.0.0.1:11434` (bez `--profile llm`):
+
+```bash
+ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.hostollama.yml up -d
+```
+
+(Zweryfikowane na WSL: warstwa LLM w kontenerze sięga loopback-owej Ollamy hosta;
+proxy nadal słucha tylko na `127.0.0.1:8787`.)
+
 ### Wariant B — Natywnie (WSL / Linux, bez Dockera) — tak jest tutaj
 
 Instaluje Ollamę jako usługę i pobiera model.
