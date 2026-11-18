@@ -331,6 +331,20 @@ def scan_body_for_leaks(body, source: str = "outgoing") -> int:
     return count
 
 
+_DOMAIN_SUR_BASE = re.compile(r"^[a-z]{3,9}-[a-z]{3,9}$")
+
+
+def _domain_surrogate_base(surrogate: str) -> str | None:
+    """For a domain surrogate (…label1-label2.example), return the distinctive
+    base 'label1-label2'; else None. Used to restore a base the model left bare
+    after dropping the '.example' TLD."""
+    if not surrogate.endswith(".example"):
+        return None
+    reg = surrogates._registrable(surrogate)        # label1-label2.example
+    base = reg[: -len(".example")] if reg.endswith(".example") else ""
+    return base if _DOMAIN_SUR_BASE.match(base) else None
+
+
 def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
     """Return (restored_text, set of surrogates that were actually replaced).
 
@@ -342,8 +356,9 @@ def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
     if not text:
         return text, set()
 
+    reverse = vault.all_reverse_mappings()
     spans: list[tuple[int, int, str]] = []  # (start, end, original)
-    for surrogate, original in vault.all_reverse_mappings():
+    for surrogate, original in reverse:
         if not surrogate:
             continue
         start = 0
@@ -353,6 +368,31 @@ def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
                 break
             spans.append((i, i + len(surrogate), original))
             start = i + len(surrogate)
+
+    # Second pass — restore a DOMAIN surrogate's bare base. The model often drops
+    # the ".example" TLD or recombines labels (especially in tables), leaving our
+    # distinctive base ("ab-cd", or "sub.ab-cd") orphaned; match it and restore
+    # the registrable domain. The base is a random letters-hyphen-letters token,
+    # so matching it in prose is unambiguous. Full ".example" forms matched above
+    # win via longest-match; here we skip a base followed by '.'/'-'/alnum.
+    for surrogate, original in reverse:
+        if not surrogate or "@" in original:
+            continue
+        base = _domain_surrogate_base(surrogate)
+        if not base:
+            continue
+        orig = surrogates._registrable(original)
+        start = 0
+        while True:
+            i = text.find(base, start)
+            if i < 0:
+                break
+            end = i + len(base)
+            before = text[i - 1] if i > 0 else ""
+            after = text[end] if end < len(text) else ""
+            if not (before.isalnum() or after.isalnum() or after in "-."):
+                spans.append((i, end, orig))
+            start = end
 
     accepted = _resolve_spans(spans)
 

@@ -127,6 +127,21 @@ def test_git_service_email_not_anonymized():
     assert not any(e == "EMAIL" for _, e in regex_detector.detect("push to git@github.com"))
 
 
+def test_domain_surrogate_base_restored_when_model_strips_tld():
+    # The model often drops ".example" or recombines labels in tables, leaving the
+    # bare surrogate base; it must still restore to the real domain.
+    anonymizer.anonymize("sites acme-widgets.com and globex-labs.net and initech-corp.org", source="t")
+    w = __import__("anonproxy.vault", fromlist=["x"]).lookup_surrogate("acme-widgets.com")
+    c = __import__("anonproxy.vault", fromlist=["x"]).lookup_surrogate("globex-labs.net")
+    s = __import__("anonproxy.vault", fromlist=["x"]).lookup_surrogate("initech-corp.org")
+    wbase, cbase, sbase = (x[: -len(".example")] for x in (w, c, s))
+    resp = f"vhosts: {wbase}, zimbra.{cbase}, www.start.{sbase}, full {w}"
+    back = anonymizer.deanonymize(resp)
+    assert "acme-widgets.com" in back and "zimbra.globex-labs.net" in back
+    assert "www.start.initech-corp.org" in back
+    assert wbase not in back and cbase not in back      # no bare surrogate leaked
+
+
 def test_bare_brand_replaced():
     anon, back = rt("deploy aplikacji example na prod")
     assert "example" not in anon
