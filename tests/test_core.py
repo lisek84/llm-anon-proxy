@@ -109,6 +109,24 @@ def test_subdomain_mask_constant_length(monkeypatch):
     assert len(short) == len(long) == 8
 
 
+def test_llm_safe_filter_rejects_tech_noise_keeps_names():
+    safe = anonymizer._llm_is_safe
+    # a small model over-flags this technical vocabulary — must be ignored
+    for noise in ["WSL-u", "SSH_AUTH_SOCK", "~/.ssh", "~/.ssh/id_rsa", "$SSH_AUTH_SOCK",
+                  "llm-anon-proxy_deploy", "SUGGESTION MODE", "HOME", "PATH", "id_rsa",
+                  "config.yaml", "-v", "./deploy.sh"]:
+        assert safe(noise), f"{noise!r} should be filtered out"
+    # real sensitive names must still pass through (not filtered)
+    for real in ["BACKUP-NODE-07", "DR-SITE-MUNICH-03", "edge-gw-fra1", "Kowalski",
+                 "Fundacja Zielona Przyszlosc"]:
+        assert not safe(real), f"{real!r} should NOT be filtered"
+
+
+def test_git_service_email_not_anonymized():
+    from anonproxy import regex_detector
+    assert not any(e == "EMAIL" for _, e in regex_detector.detect("push to git@github.com"))
+
+
 def test_bare_brand_replaced():
     anon, back = rt("deploy aplikacji example na prod")
     assert "example" not in anon

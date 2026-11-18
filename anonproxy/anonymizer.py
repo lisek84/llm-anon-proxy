@@ -90,23 +90,47 @@ _SAFE_LLM_TERMS = frozenset({
     # generic nouns the model mislabels as entities
     "server", "client", "host", "hostname", "user", "username", "service", "account",
     "cluster", "node", "network", "gateway", "firewall", "router", "switch", "portal",
+    # shell / dev / SSH vocabulary a small model loves to flag as ORG/USERNAME
+    "wsl", "wsl2", "ssh-agent", "agent", "socket", "sock", "env", "home", "path",
+    "bashrc", "zshrc", "profile", "deploy", "rsa", "dsa", "ecdsa", "ed25519",
+    "keygen", "pubkey", "github", "gitlab", "bitbucket", "aws", "gcp", "azure",
+    "k8s", "kubernetes", "pod", "namespace", "cron", "crontab", "bash", "zsh",
+    "python", "python3", "node", "npm", "pnpm", "yarn", "pip", "venv", "make",
+    "tmux", "vim", "sudo", "systemd", "compose", "kubectl", "ollama", "anthropic",
+    "shell", "term", "lang", "pwd", "editor", "pager", "display", "tmpdir", "tty",
 })
 
 _CVE_RE = re.compile(r"(?i)^cve-\d{4}-\d{3,}$")
 _VERSION_RE = re.compile(r"^v?\d+(\.\d+)+[a-z]?$")
+# Suffixes that mark a file / key / config name, not a person/org/host name.
+_SAFE_SUFFIXES = ("_deploy", "_rsa", "_dsa", "_ecdsa", "_ed25519", ".sock", ".pem",
+                  ".key", ".pub", ".crt", ".conf", ".cfg", ".yaml", ".yml", ".json",
+                  ".log", ".sh", ".py", ".txt", ".md")
 
 
 def _llm_is_safe(value: str) -> bool:
-    """True if an LLM-flagged value should be ignored (not sensitive)."""
+    """True if an LLM-flagged value should be IGNORED (not sensitive). A small
+    local model over-flags technical vocabulary — file paths, env vars, option
+    labels, tool/platform names — as ORG/USERNAME/HOSTNAME, which garbles the
+    conversation. Reject those structurally; the dictionary still catches real
+    values you listed."""
     v = value.strip()
     low = v.lower()
-    if low in _SAFE_LLM_TERMS:
+    if not v or low in _SAFE_LLM_TERMS:
         return True
-    if _CVE_RE.match(v) or _VERSION_RE.match(v):
+    if _CVE_RE.match(v) or _VERSION_RE.match(v) or len(v) < 3 or v.isdigit():
         return True
-    if len(v) < 3:
+    # File paths, env-var refs, flags, dotfiles — not person/org/host NAMES.
+    if "/" in v or v[0] in "~$-." or low.endswith(_SAFE_SUFFIXES):
         return True
-    if v.isdigit():
+    # Env vars / constants / UI mode labels: ALL-CAPS with an underscore or space
+    # (SSH_AUTH_SOCK, SUGGESTION MODE). NOT bare all-caps or hyphenated ones — a
+    # real hostname like BACKUP-NODE-07 is all-caps + hyphen and must still match.
+    letters = [c for c in v if c.isalpha()]
+    if letters and all(c.isupper() for c in letters) and ("_" in v or " " in v):
+        return True
+    # A grammatical suffix on a safe term (Polish "WSL-u", "SSH-a", "Dockera"…).
+    if "-" in low and low.rsplit("-", 1)[0] in _SAFE_LLM_TERMS:
         return True
     return False
 

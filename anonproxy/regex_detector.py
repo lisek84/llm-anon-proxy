@@ -200,6 +200,12 @@ _DOMAIN_CODE_DENYLIST = {
 }
 
 # IPs we never anonymize (loopback / well-known resolvers / metadata / unspecified).
+# Universal VCS / service SSH accounts — the same for everyone, not personal PII.
+_EMAIL_ALLOWLIST = {
+    "git@github.com", "git@gitlab.com", "git@bitbucket.org", "git@ssh.github.com",
+    "hg@bitbucket.org", "aur@aur.archlinux.org",
+}
+
 _IP_ALLOWLIST = {
     "127.0.0.1", "0.0.0.0", "255.255.255.255", "169.254.169.254",
     "8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "::1",
@@ -242,6 +248,8 @@ def detect(text: str) -> list[tuple[str, str]]:
                 continue
             if etype == "EMAIL" and _DSN_BEFORE.search(text[max(0, mstart - 256):mstart]):
                 continue  # "pass@host" in a DSN — not an email (window keeps this O(1))
+            if etype == "EMAIL" and (val.lower() in _EMAIL_ALLOWLIST or val.lower() in _USER_ALLOW):
+                continue  # universal VCS/service accounts — not personal PII
             if etype in ("IP_ADDRESS", "CIDR") and ":" in val:
                 # IPv6 (or v6 CIDR): validate with ipaddress — this is what
                 # actually rejects regex false positives (MACs, times, hex).
