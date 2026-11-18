@@ -65,6 +65,21 @@ async def _fake_upstream(scope, receive, send):
     # anonymize it the same way the proxy would.
     sur_ip, _ = vault.get_or_create("185.12.34.56", "IP_ADDRESS", surrogates.generate)
 
+    # Non-streaming branch: return a JSON body with an mcp_tool_use block so the
+    # test can check the non-streaming deanonymization path restores it.
+    try:
+        want_stream = json.loads(_received["body"]).get("stream", False)
+    except (ValueError, KeyError):
+        want_stream = True
+    if not want_stream:
+        data = {"type": "message", "role": "assistant", "model": "x",
+                "content": [{"type": "mcp_tool_use", "id": "mt1", "name": "run",
+                             "server_name": "s", "input": {"cmd": f"ping {sur_ip}"}}]}
+        await send({"type": "http.response.start", "status": 200,
+                    "headers": [(b"content-type", b"application/json")]})
+        await send({"type": "http.response.body", "body": json.dumps(data).encode()})
+        return
+
     events = []
     events.append(("message_start", {"type": "message_start",
                    "message": {"id": "m1", "type": "message", "role": "assistant",
@@ -287,6 +302,20 @@ async def test_passthrough_scans_urlencoded_query(monkeypatch):
     async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
         await client.get(f"/some/thing?token={enc}")
     assert any(ghp in t for t in seen), "decoded query secret never reached the scanner"
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_mcp_tool_use_response_restored():
+    # stream=false: an mcp_tool_use block in the JSON response must have its
+    # surrogate input restored to the real value (round-trip parity with SSE).
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as client:
+        resp = await client.post("/v1/messages", json={
+            "model": "m", "stream": False,
+            "messages": [{"role": "user", "content": "ping 185.12.34.56"}]})
+    block = resp.json()["content"][0]
+    assert block["type"] == "mcp_tool_use"
+    assert block["input"]["cmd"] == "ping 185.12.34.56"      # restored, not a surrogate
 
 
 @pytest.mark.asyncio
