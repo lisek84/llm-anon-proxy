@@ -83,6 +83,9 @@ _REQUIRED_HEADERS = {
     "authorization", "x-api-key", "content-type", "accept", "accept-language",
     "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
     "user-agent", "x-api-version",
+    # standard browser headers (a browser hitting the port shouldn't raise alarms)
+    "accept-encoding", "cache-control", "pragma", "dnt", "priority", "referer",
+    "origin", "upgrade-insecure-requests", "connection", "content-length",
 }
 _KNOWN_HEADER_PREFIXES = ("x-stainless-", "anthropic-", "sec-", "x-anonproxy-")
 _warned_headers: set[str] = set()
@@ -582,6 +585,14 @@ async def count_tokens(request: Request) -> Response:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "context": config.CONTEXT_ID, "mappings": vault.stats()}
+
+
+@app.get("/favicon.ico")
+async def favicon() -> Response:
+    # A browser visiting the dashboard requests this; answer it here so it never
+    # falls through to the upstream passthrough (which would forward it to the API
+    # and raise spurious "un-anonymized" notices for the browser's own headers).
+    return Response(status_code=204)
 
 
 # ── Live dashboard (registered before the upstream catch-all) ─────────────────
