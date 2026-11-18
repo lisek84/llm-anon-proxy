@@ -69,16 +69,16 @@ async def test_fail_closed_raises():
 
 # ── Ollama response validation (no HTTP; parse layer directly) ────────────────
 
-def test_valid_json_without_entities_key_is_a_failure():
-    # {"status":"ok"} is syntactically fine but omits `entities` — must raise,
-    # not be mistaken for an empty "nothing found" result (would KeyError later).
+def test_offschema_but_parseable_is_empty_not_failure():
+    # A small model routinely returns valid JSON that doesn't follow the schema
+    # ({"status":"ok"}, a non-list entities, …). The deterministic layers still
+    # ran, so this is best-effort "nothing found" — NOT an outage that blocks the
+    # whole request. Only an UNPARSEABLE reply raises (fail-closed).
+    assert llm_detector._parse_entities('{"status":"ok"}', "some host text here") == []
+    assert llm_detector._parse_entities('{"entities":"nope"}', "some host text here") == []
+    assert llm_detector._parse_entities('[]', "text") == []
     with pytest.raises(llm_detector.LLMUnavailable):
-        llm_detector._parse_entities('{"status":"ok"}', "some host text here")
-
-
-def test_entities_not_a_list_is_a_failure():
-    with pytest.raises(llm_detector.LLMUnavailable):
-        llm_detector._parse_entities('{"entities":"nope"}', "some host text here")
+        llm_detector._parse_entities('this is not json {{{', "text")
 
 
 def test_empty_entities_is_a_normal_empty_result():
@@ -102,14 +102,13 @@ def test_valid_ollama_message_content_returned():
         == '{"entities":[]}'
 
 
-def test_malformed_entity_element_raises():
-    # A non-string field or a missing `type` is a detector malfunction — raise
-    # (so fail-closed blocks) instead of treating it as "nothing found".
-    with pytest.raises(llm_detector.LLMUnavailable):
-        llm_detector._parse_entities(
-            '{"entities":[{"text":123,"type":"HOSTNAME"}]}', "x")
-    with pytest.raises(llm_detector.LLMUnavailable):
-        llm_detector._parse_entities('{"entities":[{"text":"DC01"}]}', "host DC01 here")
+def test_odd_entity_elements_are_skipped_not_fatal():
+    # Odd elements (non-string field, missing type) are skipped, and well-formed
+    # ones in the same reply are still extracted — one bad element must not block
+    # the whole request.
+    raw = '{"entities":[{"text":123,"type":"HOSTNAME"},{"text":"DC01"},' \
+          '{"text":"of-db01","type":"HOSTNAME"}]}'
+    assert llm_detector._parse_entities(raw, "connect to of-db01 (DC01)") == [("of-db01", "HOSTNAME")]
 
 
 def test_wellformed_but_unusable_entity_is_skipped_not_raised():

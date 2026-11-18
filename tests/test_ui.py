@@ -84,7 +84,7 @@ async def test_ui_routes_served_not_forwarded():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://proxy") as c:
         page = await c.get("/ui")
-        assert page.status_code == 200 and "anonproxy" in page.text
+        assert page.status_code == 200 and "llm-anon-proxy" in page.text
         stats = await c.get("/ui/stats")
         assert stats.status_code == 200
         body = stats.json()

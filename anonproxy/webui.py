@@ -81,7 +81,7 @@ _PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>anonproxy — live</title>
+<title>llm-anon-proxy — live</title>
 <style>
   :root{
     --bg:#0b0f17; --panel:#121826; --line:#1e2838; --txt:#e6edf3; --muted:#8b97a7;
@@ -125,7 +125,7 @@ _PAGE = r"""<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <div class="title"><span id="dot" class="dot"></span><b>anonproxy</b> · live activity</div>
+  <div class="title"><span id="dot" class="dot"></span><b>llm-anon-proxy</b> — Claude Code More Anonymous! · live activity</div>
   <div class="sub">context <span id="ctx">…</span> · <span id="reqs">0</span> requests ·
        <span id="total">0</span> values caught · <span id="notices" style="color:#ff6b6b"></span><label><input type="checkbox" id="auto" checked> follow</label></div>
   <div class="chips" id="chips"></div>

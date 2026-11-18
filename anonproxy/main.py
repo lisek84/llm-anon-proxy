@@ -96,7 +96,7 @@ async def _startup() -> None:
 _REQUIRED_HEADERS = {
     "authorization", "x-api-key", "content-type", "accept", "accept-language",
     "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access",
-    "user-agent", "x-api-version",
+    "user-agent", "x-api-version", "x-app",   # x-app: Claude Code's own client tag
     # standard browser headers (a browser hitting the port shouldn't raise alarms)
     "accept-encoding", "cache-control", "pragma", "dnt", "priority", "referer",
     "origin", "upgrade-insecure-requests", "connection", "content-length",

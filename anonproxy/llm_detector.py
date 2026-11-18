@@ -96,32 +96,28 @@ def _message_content(payload) -> str:
 
 
 def _parse_entities(raw: str, text: str) -> list[tuple[str, str]]:
-    """Parse + validate Ollama's JSON reply. A valid {"entities": []} is a normal
-    "nothing found" result; anything malformed (unparseable, no `entities` key,
-    `entities` not a list) is a DETECTOR FAILURE, not an empty result — raise so
-    fail-closed blocks instead of silently trusting regex+dict alone."""
+    """Parse Ollama's JSON reply into (text, type) matches. Only an UNPARSEABLE
+    reply is a detector failure (-> LLMUnavailable, so fail-closed blocks). A
+    small model routinely returns valid JSON that just doesn't follow the
+    {"entities":[...]} schema (an empty object, a wrong key, a non-list, odd
+    elements); that is NOT an outage — the deterministic dict+regex layers still
+    ran, so we treat it as "nothing found" (best-effort) and extract whatever
+    well-formed entities are present, rather than blocking real work."""
     try:
         data = json.loads(_extract_json(raw))
     except (ValueError, json.JSONDecodeError) as exc:
         raise LLMUnavailable(f"LLM returned unparseable JSON: {exc}") from exc
-    # Require the `entities` key explicitly and as a list. A syntactically valid
-    # object that omits it (e.g. {"status":"ok"}) would otherwise slip through and
-    # KeyError later; treat it as a failure instead.
     if not isinstance(data, dict) or not isinstance(data.get("entities"), list):
-        raise LLMUnavailable("LLM response has no valid 'entities' list")
+        return []   # off-schema but parseable — best-effort: nothing found
 
     out: list[tuple[str, str]] = []
     for e in data["entities"]:
-        # A structurally malformed element (not a dict, or missing/non-string
-        # text/type) means the detector misbehaved — under fail-closed that must
-        # block, not look like "nothing found". Raise instead of silently skipping.
-        if not isinstance(e, dict) or not isinstance(e.get("text"), str) \
-                or not isinstance(e.get("type"), str):
-            raise LLMUnavailable(f"LLM returned a malformed entity record: {e!r}")
-        val = e["text"].strip()
-        etype = e["type"].strip().upper()
-        # Well-formed but unusable (text not in the input, or a type we don't
-        # anonymize) is not an error — just skip it.
+        if not isinstance(e, dict):
+            continue
+        val, etype = e.get("text"), e.get("type")
+        if not isinstance(val, str) or not isinstance(etype, str):
+            continue   # odd element — skip it, don't fail the whole request
+        val, etype = val.strip(), etype.strip().upper()
         if val and val in text and etype in _ALLOWED:
             out.append((val, etype))
     return out
