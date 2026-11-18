@@ -101,7 +101,8 @@ _REQUIRED_HEADERS = {
     "accept-encoding", "cache-control", "pragma", "dnt", "priority", "referer",
     "origin", "upgrade-insecure-requests", "connection", "content-length",
 }
-_KNOWN_HEADER_PREFIXES = ("x-stainless-", "anthropic-", "sec-", "x-anonproxy-")
+_KNOWN_HEADER_PREFIXES = ("x-stainless-", "anthropic-", "sec-", "x-anonproxy-",
+                          "x-claude-code-")   # session id etc. — Claude Code's own
 _warned_headers: set[str] = set()
 
 
@@ -199,9 +200,17 @@ async def _llm(text: str) -> list[tuple[str, str]]:
 
 _last_llm_degrade_notice = 0.0
 
+# The contextual LLM layer runs only on the user's prose (messages + tool_result
+# content), NOT on Claude Code's own system prompt or tool schemas: a small model
+# floods that boilerplate with false-positive ORGANIZATION hits — garbling
+# Claude's instructions, costing an Ollama call per block, and slowing every
+# request. The deterministic dict+regex layers still run on system/tools and
+# catch any real IPs/domains/hosts/secrets injected there (e.g. cwd, env).
+_LLM_SKIP_SOURCES = {"system", "tools"}
+
 
 async def _anon_text(text: str, source: str) -> str:
-    matches = await _llm(text)
+    matches = [] if source in _LLM_SKIP_SOURCES else await _llm(text)
     return anonymizer.anonymize(text, llm_matches=matches, source=source)
 
 
@@ -236,8 +245,9 @@ async def _anon_block(block: dict, source: str) -> dict:
     elif t in ("tool_use", "mcp_tool_use"):
         # mcp_tool_use is a remote-MCP tool call; its input is user data heading
         # upstream, so anonymize it exactly like a normal tool_use input.
-        matches = await _llm(json.dumps(block.get("input", {})))
-        block["input"] = anonymizer.anonymize_value(block.get("input", {}), matches, source)
+        inp = block.get("input", {})
+        matches = [] if source in _LLM_SKIP_SOURCES else await _llm(json.dumps(inp))
+        block["input"] = anonymizer.anonymize_value(inp, matches, source)
     elif t in ("tool_result", "mcp_tool_result"):
         c = block.get("content")
         if isinstance(c, str):

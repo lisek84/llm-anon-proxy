@@ -61,6 +61,27 @@ async def test_fail_open_degradation_emits_dashboard_notice():
 
 
 @pytest.mark.asyncio
+async def test_llm_skipped_for_system_and_tools(monkeypatch):
+    # The contextual LLM layer must NOT run on Claude Code's system prompt / tool
+    # schemas (boilerplate a small model floods with false positives) — only on
+    # message/tool_result prose.
+    seen = []
+
+    async def _spy(text):
+        seen.append(text)
+        return []
+
+    monkeypatch.setattr(llm_detector, "detect", _spy)
+    config.LLM_ENABLED = True
+    config.LLM_FAIL_CLOSED = False
+    await main._anon_text("a boilerplate instruction line", "system")
+    await main._anon_text("a tool description sentence", "tools")
+    assert seen == []                                   # not consulted for those
+    await main._anon_text("a user prose line long enough", "message")
+    assert len(seen) == 1                               # consulted for messages
+
+
+@pytest.mark.asyncio
 async def test_fail_closed_raises():
     config.LLM_FAIL_CLOSED = True
     with pytest.raises(llm_detector.LLMUnavailable):
