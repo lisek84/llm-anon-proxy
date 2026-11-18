@@ -365,11 +365,24 @@ def anonymize_value(obj, llm_matches=None, source: str = ""):
 
 def deanon_value(obj):
     """Recursively deanonymize all strings inside a JSON-like structure (keys too)."""
-    if isinstance(obj, str):
-        return deanonymize(obj)
-    if isinstance(obj, dict):
-        return {deanonymize(k) if isinstance(k, str) else k: deanon_value(v)
-                for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [deanon_value(v) for v in obj]
-    return obj
+    return deanon_value_detailed(obj)[0]
+
+
+def deanon_value_detailed(obj) -> tuple[object, set[str]]:
+    """Like deanon_value, but also returns the set of surrogates actually
+    replaced — so callers (e.g. restoring tool_use / mcp_tool_* in a non-streaming
+    response) can report an accurate 'restored' count, not just for text blocks."""
+    restored: set[str] = set()
+
+    def walk(o):
+        if isinstance(o, str):
+            out, r = deanonymize_detailed(o)
+            restored.update(r)
+            return out
+        if isinstance(o, dict):
+            return {(walk(k) if isinstance(k, str) else k): walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+
+    return walk(obj), restored

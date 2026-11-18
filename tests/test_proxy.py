@@ -304,6 +304,34 @@ async def test_passthrough_scans_urlencoded_query(monkeypatch):
     assert any(ghp in t for t in seen), "decoded query secret never reached the scanner"
 
 
+def test_deanon_json_response_counts_tool_args():
+    # The non-streaming restored count must include tool_use / mcp_tool_use args
+    # and nested mcp_tool_result content, not only text blocks.
+    from anonproxy import main
+    sip, _ = vault.get_or_create("185.12.34.56", "IP_ADDRESS", surrogates.generate)
+    shost, _ = vault.get_or_create("of-prod-db01", "HOSTNAME", surrogates.generate)
+    data = {"content": [
+        {"type": "text", "text": "ok"},
+        {"type": "tool_use", "id": "t", "name": "Bash", "input": {"cmd": f"ssh root@{sip}"}},
+        {"type": "mcp_tool_use", "id": "m", "name": "q", "server_name": "s",
+         "input": {"host": shost, "ip": sip}},
+        {"type": "mcp_tool_result", "tool_use_id": "m",
+         "content": [{"type": "text", "text": f"ran on {shost}"}]},
+    ]}
+    out, count = main._deanon_json_response(data)
+    assert count == 2                                       # two distinct surrogates
+    assert out["content"][1]["input"]["cmd"] == "ssh root@185.12.34.56"
+    assert out["content"][2]["input"] == {"host": "of-prod-db01", "ip": "185.12.34.56"}
+    assert out["content"][3]["content"][0]["text"] == "ran on of-prod-db01"
+
+
+def test_deanon_json_response_zero_when_no_surrogates():
+    from anonproxy import main
+    data = {"content": [{"type": "tool_use", "input": {"cmd": "echo hello world"}}]}
+    _, count = main._deanon_json_response(data)
+    assert count == 0
+
+
 @pytest.mark.asyncio
 async def test_non_streaming_mcp_tool_use_response_restored():
     # stream=false: an mcp_tool_use block in the JSON response must have its

@@ -328,15 +328,18 @@ def _deanon_json_response(data: dict) -> tuple[dict, int]:
             # Symmetric with _anon_block (and with the streaming path, which
             # restores any input_json_delta): a non-streaming mcp_tool_use must
             # have its surrogate input restored too, or Claude Code gets fake
-            # hosts/IPs back.
-            block["input"] = anonymizer.deanon_value(block.get("input", {}))
+            # hosts/IPs back. Use the _detailed variant so the restored count is
+            # accurate (not just text blocks).
+            block["input"], r = anonymizer.deanon_value_detailed(block.get("input", {}))
+            restored |= r
         elif t == "mcp_tool_result":
             c = block.get("content")
             if isinstance(c, str):
                 block["content"], r = anonymizer.deanonymize_detailed(c)
                 restored |= r
             elif isinstance(c, list):
-                block["content"] = anonymizer.deanon_value(c)
+                block["content"], r = anonymizer.deanon_value_detailed(c)
+                restored |= r
     if restored:
         log.info("← restored %d surrogate(s) in response", len(restored))
     return data, len(restored)
