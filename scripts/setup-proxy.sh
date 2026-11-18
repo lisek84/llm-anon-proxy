@@ -24,6 +24,6 @@ fi
 
 echo
 echo "==> Done. Next:"
-echo "    1. edit dictionary.yaml   (or: python scripts/gen_dictionary.py --from .env --hostname)"
+echo "    1. edit dictionary.yaml   (or seed it: python -m anonproxy.gendict auto)"
 echo "    2. . .venv/bin/activate && python -m anonproxy"
 echo "    3. export ANTHROPIC_BASE_URL=http://127.0.0.1:8787 && claude"
