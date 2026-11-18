@@ -138,7 +138,12 @@ def check_isolation() -> list[str]:
     """Return a list of human-readable isolation problems (empty = looks ok)."""
     problems: list[str] = []
     proxy_uid = os.getuid()
-    proxy_user = pwd.getpwuid(proxy_uid).pw_name
+    try:
+        proxy_user = pwd.getpwuid(proxy_uid).pw_name
+    except KeyError:
+        # A dedicated UID (e.g. the compose default 991) often has no /etc/passwd
+        # entry in a slim container — don't crash the startup preflight over it.
+        proxy_user = str(proxy_uid)
 
     # Resolve the agent's identity. Numeric CLIENT_UID/GIDS take precedence — in a
     # container the host username doesn't exist in /etc/passwd, so a name can't be

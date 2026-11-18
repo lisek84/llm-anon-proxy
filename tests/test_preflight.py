@@ -61,6 +61,20 @@ def test_numeric_client_uid_foreign_not_flagged_as_readable(monkeypatch):
     assert not any("can read" in p for p in problems)        # foreign uid can't read our files
 
 
+def test_preflight_survives_proxy_uid_without_passwd_entry(monkeypatch):
+    # Container case: the dedicated UID (e.g. 991) has no /etc/passwd entry, so
+    # pwd.getpwuid raises KeyError. The startup preflight must not crash on it.
+    import pwd
+    monkeypatch.setattr(os, "getuid", lambda: 991)
+    monkeypatch.setattr(pwd, "getpwuid",
+                        lambda uid: (_ for _ in ()).throw(KeyError(uid)))
+    monkeypatch.setattr(config, "CLIENT_USER", "")
+    monkeypatch.setattr(config, "CLIENT_UID", 1000)        # the agent, != 991
+    monkeypatch.setattr(config, "CLIENT_GIDS", frozenset({1000}))
+    problems = preflight.check_isolation()                 # must not raise
+    assert isinstance(problems, list)
+
+
 def test_root_client_is_flagged(monkeypatch):
     # root (uid 0) bypasses file-permission bits, so 0600/0700 proves nothing.
     monkeypatch.setattr(config, "CLIENT_USER", "")
