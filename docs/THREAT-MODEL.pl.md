@@ -43,8 +43,13 @@ W rosnącej kolejności siły:
    sudo bash scripts/setup-isolated-user.sh
    ```
 
-2. **Kontener** — Ollama i/lub proxy w Dockerze, dane w wolumenie, którego
-   użytkownik hosta nie montuje. Claude Code na hoście sięga tylko do portu.
+2. **Kontener** — Ollama i/lub proxy w Dockerze. Izoluje **tylko jeśli vault nie
+   jest czytelny dla użytkownika hosta uruchamiającego Claude Code**. Dołączony
+   compose uruchamia kontener jako dedykowany UID (991), a bind mount `./data` ma
+   `0700` i należy do tego UID — więc użytkownik agenta nie odczyta
+   `mappings.db`/`secret.key`. Przestaje izolować w chwili, gdy zrobisz `chown`
+   danych na siebie albo ustawisz `ANONPROXY_UID=$(id -u)`; bind mount należący do
+   użytkownika hosta nie daje żadnej izolacji.
 
 3. **Osobna dystrybucja WSL** — uruchom proxy w drugiej dystrybucji; agent w Twojej
    dystrybucji roboczej widzi tylko `127.0.0.1:8787` (lub zmapowany port).
@@ -158,9 +163,15 @@ Domyślnie priorytetem jest niełamanie Claude Code; te czynią go rygorystyczny
   tam, gdzie klient potrafi go wysłać.
 
 Preflight przy starcie sprawdza klasyczne uniksowe właściciel/grupa/tryb i
-przejście przez katalogi. **Nie** ocenia POSIX ACL, capabilities ani dostępu przez
-Docker socket lub proces uprzywilejowany — traktuj go jako zabezpieczenie
-pomocnicze, nie dowód izolacji (izoluje wyłącznie granica systemu/użytkownika/hosta).
+przejście przez katalogi. **Wykrywa** obecność rozszerzonego POSIX ACL (xattr
+`system.posix_acl_access`) oraz nieudane sprawdzenie uprawnień i traktuje każde z
+nich jako *izolację niepotwierdzoną* (problem w trybie `enforce`), ale **nie**
+rozwiązuje nazwanych wpisów ACL, by ustalić komu dają dostęp, ani nie ocenia
+capabilities czy dostępu przez Docker socket / proces uprzywilejowany — traktuj go
+jako zabezpieczenie pomocnicze, nie dowód izolacji (izoluje wyłącznie granica
+systemu/użytkownika/hosta). W kontenerze (gdzie nazwa użytkownika hosta się nie
+rozwiązuje) podaj numerycznie `ANONPROXY_CLIENT_UID`/`ANONPROXY_CLIENT_GIDS`
+(`id -u` / `id -G`) zamiast `ANONPROXY_CLIENT_USER`.
 
 Wychodzący skan wycieków to **wykrywanie wycieków** (pozostałe CREDENTIAL/TOKEN do
 rotacji), nie pełna **weryfikacja prywatności**: gołej nazwy hosta typu
@@ -174,6 +185,21 @@ przejdzie niezauważona. Przypadek błędnej odpowiedzi LLM też jest teraz
 fail-closed: niesparsowalna lub strukturalnie zła odpowiedź Ollamy rzuca
 `LLMUnavailable` (tylko poprawne `{"entities": []}` liczy się jako „nic nie
 znaleziono").
+
+## Zdalny konektor MCP (`mcp_servers`)
+
+Zdalnego konektora MCP Anthropic (pole `mcp_servers` na poziomie żądania) nie da
+się zanonimizować: to **samo Anthropic** łączy się z serwerem MCP, więc potrzebuje
+prawdziwego `url` i `authorization_token`. Podmiana na zamienniki zerwałaby
+połączenie. Dlatego proxy przekazuje je bez zmian, z notice na dashboardzie i
+best-effort skanem wycieków, żebyś wiedział, że prawdziwy URL + token opuściły
+maszynę; `ANONPROXY_BLOCK_MCP=true` pozwala takie żądania odrzucać. To samo
+dotyczy wartości, które zdalne wywołanie narzędzia MCP niesie po stronie
+Anthropic. Proxy **anonimizuje** natomiast bloki MCP płynące w historii w górę —
+wejścia `mcp_tool_use`, treść `mcp_tool_result` i opisy `mcp_tool_listing` — tak
+jak ich odpowiedniki bez MCP. Dla pełnej kontroli nad infrastrukturą wystawioną do
+zdalnego serwera MCP postaw ten serwer za tym proxy albo użyj lokalnego serwera
+MCP zamiast zdalnego konektora.
 
 ## Detekcja jest wartościowa, nie pozycyjna
 

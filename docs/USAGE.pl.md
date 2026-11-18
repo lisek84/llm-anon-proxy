@@ -70,6 +70,18 @@ www.shop.pl     → www.ab-cd.example
 status.shop.pl  → status.ab-cd.example
 ```
 
+Domyślnie (`ANONPROXY_SUBDOMAIN_POLICY=preserve`) **nazwy** sub-labeli są widoczne
+dla modelu — a nazwa typu `prod-db01`, `vpn` albo klienta bywa najbardziej
+wrażliwą częścią. Ustaw `ANONPROXY_SUBDOMAIN_POLICY=mask`, by każdy sub-label
+zamienić na deterministyczny, obojętny token (stała długość), zachowując strukturę
+poziomów i wspólną bazę, ale ukrywając nazwy:
+
+```
+prod-db01.shop.pl → k7f2d9xq.ab-cd.example
+vpn.shop.pl       → q3n8p2ab.ab-cd.example
+```
+
+
 Co tu wpisywać: rzeczy wysokiej wartości, których skan nie wywnioskuje — nazwy
 marek/projektów, wewnętrzne nazwy hostów, konta usługowe, wrażliwe ścieżki.
 Identyfikatory typu domeny/IP/e-maile można zasiać automatycznie:
@@ -103,11 +115,25 @@ Zmiany są wczytywane przy restarcie proxy.
 
 ## Co jest podmieniane — a co nie
 
-Podmieniane: wartości ze słownika; IP, CIDR, MAC, e-maile, domeny; klucze i tokeny
-API (AWS, GitHub, Stripe, Slack, GitLab, Google, JWT); klucze prywatne PEM; hashe
-crypt/htpasswd; oraz sekrety w postaci przypisań (`password:`, `PGPASSWORD=`,
-`mysql -p…`, `define('DB_PASSWORD', …)`, `requirepass`, DSN `user:pass@host`,
-`Bearer …`).
+Podmieniane: wartości ze słownika; IP (v4 **i** v6), CIDR, MAC, e-maile, domeny;
+klucze i tokeny API (AWS, GitHub, Stripe, Slack, GitLab, Google, JWT); klucze
+prywatne PEM; hashe crypt/htpasswd; oraz sekrety w postaci przypisań
+(`password:`, `PGPASSWORD=`, `mysql -p…`, `define('DB_PASSWORD', …)`,
+`requirepass`, DSN `user:pass@host`, `Bearer …`).
+
+Polskie identyfikatory, walidowane sumą kontrolną (żeby losowa liczba nie została
+wzięta za identyfikator), domyślnie włączone (`ANONPROXY_DETECT_PL_ID`):
+
+* **PESEL** (11 cyfr, suma kontrolna + zakodowana data urodzenia) i **REGON-14** —
+  łapane gołe; false-positive ~1–2% ciągów 11/14-cyfrowych.
+* **NIP** (10) i **REGON-9** — łapane tylko w wyraźnym kontekście (`NIP: …`,
+  `PL1234567890`, `REGON: …`), bo gołe 10/9-cyfrowe liczby kolidują z
+  timestampami unix i numerami telefonów na ~9–10%. Ustaw
+  `ANONPROXY_DETECT_PL_ID_BARE=true`, aby łapać je też gołe (większy recall, te
+  ~9% nadmiarowej anonimizacji — która i tak się odwraca, więc nic nie wycieka).
+
+Zamienniki to atrapy z poprawną sumą kontrolną (np. fałszywy PESEL, który nadal
+przechodzi walidację), same cyfry — więc pozostają bezpieczne w powłoce.
 
 Celowo nietknięte: loopback i dobrze znane IP (`127.0.0.1`, `8.8.8.8`,
 `169.254.169.254`…) oraz domeny narzędziowe (`anthropic.com`, `github.com`,

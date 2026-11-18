@@ -86,7 +86,8 @@ wpisanie domeny rejestrowalnej pokrywa też jej subdomeny. Identyfikatory możes
 zasiać z lokalnych plików:
 
 ```bash
-python scripts/gen_dictionary.py --from .env --hostname --git   # przejrzyj, potem scal
+cat /etc/hosts | python -m anonproxy.gendict ips --merge dictionary.yaml  # pipe-friendly
+python -m anonproxy.gendict auto                                          # przeskanuj maszynę
 ```
 
 ## Uruchomienie
@@ -112,7 +113,8 @@ Twoje poświadczenia API przechodzą wprost do Anthropic i nigdy nie są logowan
 ## Warstwy wykrywania
 
 1. **Słownik** — Twoje dokładne wartości (deterministyczne, najwyższy priorytet).
-2. **Regex** — IP, CIDR, MAC, e-maile, domeny, klucze/tokeny API (AWS, GitHub,
+2. **Regex** — IP (v4/v6), CIDR, MAC, e-maile, domeny, polskie identyfikatory
+   (PESEL/NIP/REGON, walidowane sumą kontrolną), klucze/tokeny API (AWS, GitHub,
    Stripe, Slack, GitLab, Google, JWT), klucze prywatne PEM, hashe crypt/htpasswd
    oraz sekrety w postaci przypisań (`password:`, `PGPASSWORD=`, `mysql -p…`,
    `define('DB_PASSWORD', …)`, `requirepass`, DSN `user:pass@host`, `Bearer …`).
@@ -230,16 +232,22 @@ Szczegóły i konsekwencje: [docs/USAGE.pl.md](docs/USAGE.pl.md).
 | `ANONPROXY_UPSTREAM` | `https://api.anthropic.com` | prawdziwe API |
 | `ANONPROXY_CONTEXT` | `default` | identyfikator izolacji mapowań |
 | `ANONPROXY_DICT` | `dictionary.yaml` | Twoje wartości |
+| `ANONPROXY_SUBDOMAIN_POLICY` | `preserve` | `preserve` nazwy subdomen albo `mask` (ukryj) |
+| `ANONPROXY_DETECT_PL_ID` | `true` | wykrywaj PESEL/NIP/REGON po sumie kontrolnej |
+| `ANONPROXY_DETECT_PL_ID_BARE` | `false` | łap też gołe NIP (10)/REGON (9) (~9% FP) |
 | `ANONPROXY_LLM` | `false` | włącz warstwę Ollama |
 | `ANONPROXY_OLLAMA_MODEL` | `qwen3.5:4b` | id modelu |
 | `ANONPROXY_DATA_DIR` | `./data` | baza, klucz, logi rotacji + audytu |
 | `ANONPROXY_AUDIT` | `true` | zapisuj dziennik `oryginał -> zamiennik` |
 | `ANONPROXY_ISOLATION` | `warn` | `warn` / `enforce` / `off` (zobacz THREAT-MODEL) |
+| `ANONPROXY_CLIENT_USER` | _(nieustawione)_ | użytkownik OS uruchamiający Claude Code (preflight sprawdza, że nie czyta vaulta) |
+| `ANONPROXY_CLIENT_UID` / `_GIDS` | _(nieustawione)_ | numeryczna tożsamość dla preflight w kontenerze (`id -u` / `id -G`) |
 | `ANONPROXY_UI` | `true` | udostępnij dashboard na `/ui` |
 | `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | pokaż prawdziwe wartości w dashboardzie |
 | `ANONPROXY_RESET` | _(nieustawione)_ | tylko `start_proxy.sh`: `1` zapomnij mapowania · `new-key` też rotacja klucza · `all` + logi |
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | blokuj (503) żądania z blokami image/binarny document zamiast je przekazywać |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | blokuj (403) endpointy inne niż `/v1/messages[/count_tokens]` |
+| `ANONPROXY_BLOCK_MCP` | `false` | blokuj (503) żądania z `mcp_servers` (url+token zdalnego MCP nie da się anonimizować) |
 | `ANONPROXY_TOKEN` | _(nieustawione)_ | wymagaj sekretu (nagłówek X-Anonproxy-Token lub ścieżka `…:8787/<token>`); poza loopbackiem |
 | `ANONPROXY_TLS` | `false` | serwuj HTTPS z auto-generowanym certem self-signed (katalog danych) |
 | `ANONPROXY_TLS_CERT` / `ANONPROXY_TLS_KEY` | _(nieustawione)_ | serwuj HTTPS z własnym certem/kluczem |

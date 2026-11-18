@@ -110,7 +110,8 @@ Your API credentials pass straight through to Anthropic and are never logged.
 ## Detection layers
 
 1. **Dictionary** — your exact values (deterministic, highest priority).
-2. **Regex** — IPs, CIDRs, MACs, emails, domains, API keys/tokens (AWS, GitHub,
+2. **Regex** — IPs (v4/v6), CIDRs, MACs, emails, domains, Polish national IDs
+   (PESEL/NIP/REGON, checksum-validated), API keys/tokens (AWS, GitHub,
    Stripe, Slack, GitLab, Google, JWT), PEM private keys, crypt/htpasswd hashes,
    and assignment-style secrets (`password:`, `PGPASSWORD=`, `mysql -p…`,
    `define('DB_PASSWORD', …)`, `requirepass`, DSN `user:pass@host`, `Bearer …`).
@@ -226,16 +227,22 @@ Details and consequences: [docs/USAGE.md](docs/USAGE.md#mappings-persist--cleari
 | `ANONPROXY_UPSTREAM` | `https://api.anthropic.com` | real API |
 | `ANONPROXY_CONTEXT` | `default` | mapping isolation id |
 | `ANONPROXY_DICT` | `dictionary.yaml` | your values |
+| `ANONPROXY_SUBDOMAIN_POLICY` | `preserve` | `preserve` sub-label names or `mask` them |
+| `ANONPROXY_DETECT_PL_ID` | `true` | detect Polish PESEL/NIP/REGON by checksum |
+| `ANONPROXY_DETECT_PL_ID_BARE` | `false` | also catch bare 10-digit NIP / 9-digit REGON (~9% FP) |
 | `ANONPROXY_LLM` | `false` | enable the Ollama layer |
 | `ANONPROXY_OLLAMA_MODEL` | `qwen3.5:4b` | model id |
 | `ANONPROXY_DATA_DIR` | `./data` | db, secret key, rotation + audit logs |
 | `ANONPROXY_AUDIT` | `true` | write the `original -> surrogate` audit trail |
 | `ANONPROXY_ISOLATION` | `warn` | `warn` / `enforce` / `off` (see THREAT-MODEL) |
+| `ANONPROXY_CLIENT_USER` | _(unset)_ | the OS user running Claude Code (preflight checks it can't read the vault) |
+| `ANONPROXY_CLIENT_UID` / `_GIDS` | _(unset)_ | numeric identity for the preflight in a container (`id -u` / `id -G`) |
 | `ANONPROXY_UI` | `true` | serve the live dashboard at `/ui` |
 | `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | reveal real values in the dashboard |
 | `ANONPROXY_RESET` | _(unset)_ | `start_proxy.sh` only: `1` forget mappings · `new-key` also rotate key · `all` + logs |
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | block (503) requests with image/binary-document blocks instead of forwarding |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | block (403) endpoints other than `/v1/messages[/count_tokens]` |
+| `ANONPROXY_BLOCK_MCP` | `false` | block (503) requests with `mcp_servers` (remote MCP url+token can't be anonymized) |
 | `ANONPROXY_TOKEN` | _(unset)_ | require this secret (X-Anonproxy-Token header, or `…:8787/<token>` path); non-loopback use |
 | `ANONPROXY_TLS` | `false` | serve HTTPS with an auto-generated self-signed cert (data dir) |
 | `ANONPROXY_TLS_CERT` / `ANONPROXY_TLS_KEY` | _(unset)_ | serve HTTPS with your own cert/key instead |
