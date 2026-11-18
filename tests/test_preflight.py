@@ -61,6 +61,26 @@ def test_numeric_client_uid_foreign_not_flagged_as_readable(monkeypatch):
     assert not any("can read" in p for p in problems)        # foreign uid can't read our files
 
 
+def test_root_client_is_flagged(monkeypatch):
+    # root (uid 0) bypasses file-permission bits, so 0600/0700 proves nothing.
+    monkeypatch.setattr(config, "CLIENT_USER", "")
+    monkeypatch.setattr(config, "CLIENT_UID", 0)
+    monkeypatch.setattr(config, "CLIENT_GIDS", frozenset())
+    problems = preflight.check_isolation()
+    assert problems and "root" in problems[0].lower()
+
+
+def test_acl_check_error_is_unknown_not_safe(monkeypatch):
+    f = Path(_MY_DATA) / "aclcheck.txt"
+    f.write_text("x")
+    os.chmod(f, 0o600)
+    foreign = 424242                                       # not owner/group → bits deny
+    monkeypatch.setattr(preflight, "_has_posix_acl", lambda p: None)   # couldn't check
+    assert preflight._can_read(f, foreign, frozenset()) is None        # unknown, not False
+    monkeypatch.setattr(preflight, "_has_posix_acl", lambda p: False)  # definitely no ACL
+    assert preflight._can_read(f, foreign, frozenset()) is False
+
+
 def test_same_user_is_flagged():
     config.CLIENT_USER = _me()
     problems = preflight.check_isolation()

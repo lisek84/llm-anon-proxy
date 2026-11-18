@@ -20,6 +20,7 @@ This module does two things at startup:
 
 Run standalone:  python -m anonproxy.preflight
 """
+import errno
 import grp
 import logging
 import os
@@ -78,14 +79,20 @@ def _user_ids(username: str) -> tuple[int, set[int]] | None:
     return pw.pw_uid, gids
 
 
-def _has_posix_acl(path) -> bool:
-    """True if `path` carries an extended POSIX ACL (a named user/group entry the
-    classic uid/gid/other bits don't represent). Linux stores it in the
-    `system.posix_acl_access` xattr. Best-effort: unknown platforms return False."""
+def _has_posix_acl(path):
+    """Tri-state: True (an extended POSIX ACL is present — a named user/group
+    entry the classic uid/gid/other bits don't represent), False (definitely none
+    — the filesystem doesn't support ACLs, or no platform support for the check),
+    or None (couldn't check: an access error isn't proof there is no ACL). Linux
+    stores the ACL in the `system.posix_acl_access` xattr."""
     try:
         return "system.posix_acl_access" in os.listxattr(path)
-    except (OSError, AttributeError):
-        return False
+    except AttributeError:
+        return False   # os.listxattr not on this platform → xattr ACLs n/a here
+    except OSError as exc:
+        if exc.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+            return False   # filesystem can't carry a POSIX ACL → genuinely none
+        return None        # EACCES etc. — unknown, must not be read as "safe"
 
 
 def _can_read(path, uid: int, gids: set[int]):
@@ -113,9 +120,7 @@ def _can_read(path, uid: int, gids: set[int]):
     # An ACL on the file or any ancestor can grant this user access invisibly to
     # the bit check — we can't confidently say "cannot read", so report unknown.
     if not readable(st, want_r=True):
-        if _has_posix_acl(path):
-            return None
-        return False
+        return False if _has_posix_acl(path) is False else None
     p = path.resolve()
     for parent in p.parents:
         try:
@@ -123,7 +128,7 @@ def _can_read(path, uid: int, gids: set[int]):
         except OSError:
             return None
         if not readable(pst, want_r=False):
-            return None if _has_posix_acl(parent) else False
+            return False if _has_posix_acl(parent) is False else None
         if parent == parent.parent:  # reached root
             break
     return True
@@ -160,6 +165,15 @@ def check_isolation() -> list[str]:
             f"proxy runs as the SAME uid ({proxy_uid}, user '{proxy_user}') that runs Claude "
             f"Code — the agent can read the vault and reverse everything. Run the proxy as a "
             f"different user / container / host.")
+        return problems
+
+    if cuid == 0:
+        # root bypasses ordinary file permission bits (DAC_OVERRIDE), so 0600/0700
+        # on the vault proves nothing — the classic-bit check below would wrongly
+        # read as "cannot access". Treat a root client as not isolated outright.
+        problems.append(
+            "Claude Code runs as root (uid 0) — root bypasses file permissions and can "
+            "read the proxy's vault regardless of mode. Run the agent as a non-root user.")
         return problems
 
     for p in _sensitive_paths():
