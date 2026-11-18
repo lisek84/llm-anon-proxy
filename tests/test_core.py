@@ -142,6 +142,22 @@ def test_domain_surrogate_base_restored_when_model_strips_tld():
     assert wbase not in back and cbase not in back      # no bare surrogate leaked
 
 
+def test_ssh_target_keeps_login_anonymizes_host():
+    # "root@host" is an SSH target, not an email: the login must survive so the
+    # model doesn't think it's connecting as the wrong user; the host is hidden.
+    out = anonymizer.anonymize("ssh root@db.initech-corp.org", source="message")
+    assert out.startswith("ssh root@")                 # login preserved
+    assert "initech-corp.org" not in out              # host anonymized
+    assert anonymizer.deanonymize(out) == "ssh root@db.initech-corp.org"
+
+
+def test_personal_email_still_fully_anonymized():
+    # A real personal email (name local-part) stays fully anonymized.
+    out = anonymizer.anonymize("write to jan.kowalski@firma.pl", source="message")
+    assert "jan.kowalski" not in out and "firma.pl" not in out
+    assert anonymizer.deanonymize(out) == "write to jan.kowalski@firma.pl"
+
+
 def test_request_stats_counts_anonymized_values():
     anonymizer.begin_request()
     anonymizer.anonymize("ssh of_app@of-prod-db01 185.12.34.56 for example.com", source="message")

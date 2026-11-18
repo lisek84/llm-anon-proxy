@@ -206,6 +206,18 @@ _EMAIL_ALLOWLIST = {
     "hg@bitbucket.org", "aur@aur.archlinux.org",
 }
 
+# Well-known SSH / system login names. "login@host" with one of these is an SSH
+# (or remote) target, NOT an email: the login is a generic account (no PII), so
+# we keep it intact and anonymize only the host — otherwise `ssh root@host`
+# becomes `ssh <random-user>@<host>` and the model thinks it's logging in as the
+# wrong user. Personal local-parts (names) stay anonymized as normal emails.
+_SSH_LOGINS = {
+    "root", "ubuntu", "admin", "administrator", "ec2-user", "debian", "centos",
+    "fedora", "rocky", "almalinux", "alma", "azureuser", "opc", "git", "deploy",
+    "pi", "vagrant", "www-data", "postgres", "mysql", "oracle", "ansible",
+    "cloud-user", "cloud", "core", "user", "dev", "ops", "sysadmin", "support",
+}
+
 _IP_ALLOWLIST = {
     "127.0.0.1", "0.0.0.0", "255.255.255.255", "169.254.169.254",
     "8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "::1",
@@ -232,6 +244,15 @@ def set_user_allow(values) -> None:
     _USER_ALLOW = {v.lower().rstrip(".") for v in values if v}
 
 
+def _domain_allowed(low: str) -> bool:
+    """A host/domain (lowercased) the user keeps visible (service or user allow)."""
+    low = low.rstrip(".")
+    return (low in _DOMAIN_ALLOWLIST
+            or any(low == d or low.endswith("." + d) for d in _DOMAIN_ALLOWLIST)
+            or low in _USER_ALLOW
+            or any(low == d or low.endswith("." + d) for d in _USER_ALLOW))
+
+
 def detect(text: str) -> list[tuple[str, str]]:
     if not text:
         return []
@@ -250,6 +271,17 @@ def detect(text: str) -> list[tuple[str, str]]:
                 continue  # "pass@host" in a DSN — not an email (window keeps this O(1))
             if etype == "EMAIL" and (val.lower() in _EMAIL_ALLOWLIST or val.lower() in _USER_ALLOW):
                 continue  # universal VCS/service accounts — not personal PII
+            if etype == "EMAIL" and val.split("@", 1)[0].lower() in _SSH_LOGINS:
+                # "root@host" etc. is an SSH target, not an email: keep the login,
+                # anonymize just the host (as a DOMAIN) unless it's allowlisted.
+                host = val.split("@", 1)[1]
+                if host and host.lower().rstrip(".") not in _DOMAIN_CODE_DENYLIST \
+                        and not _domain_allowed(host.lower()):
+                    k = (host, "DOMAIN")
+                    if k not in seen:
+                        seen.add(k)
+                        out.append(k)
+                continue
             if etype in ("IP_ADDRESS", "CIDR") and ":" in val:
                 # IPv6 (or v6 CIDR): validate with ipaddress — this is what
                 # actually rejects regex false positives (MACs, times, hex).
@@ -268,13 +300,7 @@ def detect(text: str) -> list[tuple[str, str]]:
                 low = val.lower().rstrip(".")
                 if low in _DOMAIN_CODE_DENYLIST:
                     continue
-                if low in _DOMAIN_ALLOWLIST or any(
-                    low == d or low.endswith("." + d) for d in _DOMAIN_ALLOWLIST
-                ):
-                    continue
-                if low in _USER_ALLOW or any(
-                    low == d or low.endswith("." + d) for d in _USER_ALLOW
-                ):
+                if _domain_allowed(low):
                     continue
             if etype in _PL_TYPES:
                 if not config.DETECT_PL_ID:
