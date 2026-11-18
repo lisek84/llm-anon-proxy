@@ -66,6 +66,7 @@ cp dictionary.example.yaml dictionary.yaml   # edit with YOUR values
 id 991; getent passwd 991                    # both must print nothing (also covers LDAP/NSS)
 sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml  # originals, agent-unreadable
 sudo install -d -o 991 -g 991 -m 0700 data   # vault dir owned by the proxy UID, not you
+sudo chown -R 991:991 data                   # fix any files already inside too
 
 docker compose up -d                         # proxy (dict + regex); add: --profile llm for Ollama
 ./claude_anon                                # in your working console

@@ -68,6 +68,7 @@ cp dictionary.example.yaml dictionary.yaml   # uzupełnij SWOIMI wartościami
 id 991; getent passwd 991                    # oba bez wyniku: 991 nie może być użytkownikiem agenta
 sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml  # oryginały, nieczytelne dla agenta
 sudo install -d -o 991 -g 991 -m 0700 data   # katalog vaulta jako UID proxy, nie Ty
+sudo chown -R 991:991 data                   # napraw też pliki już w środku
 
 docker compose up -d                         # proxy (słownik + regex); dodaj: --profile llm dla Ollamy
 ./claude_anon                                # w konsoli roboczej

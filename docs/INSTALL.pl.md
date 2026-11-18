@@ -28,6 +28,7 @@ id 991; getent passwd 991    # oba bez wyniku (obejmuje też LDAP/NSS);  id -u  
 #    Słownik edytuj potem przez:  sudo -e dictionary.yaml
 sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml
 sudo install -d -o 991 -g 991 -m 0700 data
+sudo chown -R 991:991 data        # jeśli data/ już istnieje, napraw też pliki w środku
 
 docker compose up -d                           # buduje + startuje proxy (słownik + regex)
 ```

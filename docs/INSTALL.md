@@ -28,6 +28,7 @@ id 991; getent passwd 991    # both expect NO output (covers LDAP/NSS too); `id 
 #    Edit the dictionary later with:  sudo -e dictionary.yaml
 sudo chown 991:991 dictionary.yaml && sudo chmod 600 dictionary.yaml
 sudo install -d -o 991 -g 991 -m 0700 data
+sudo chown -R 991:991 data        # if data/ already exists, fix files inside too
 
 docker compose up -d                           # builds + starts the proxy (dict + regex)
 ```

@@ -11,6 +11,7 @@ before Claude Code sees them, so commands run against real hosts.
 """
 import json
 import logging
+import os
 import time
 
 import httpx
@@ -72,6 +73,19 @@ async def _startup() -> None:
     preflight.run()
     vault.init()
     dictionary.load()
+    # Fail fast and clearly if the secret key / data dir isn't ours: otherwise the
+    # first request that needs a surrogate dies with a 500 mid-flight. Common when
+    # the data dir was chowned to the proxy's UID but a pre-existing secret.key /
+    # mappings.db inside it was left owned by another user.
+    try:
+        import anonproxy.surrogates as _surr
+        _surr._load_secret()
+    except OSError as exc:
+        log.error("cannot access the secret key at %s: %s", config.SECRET_KEY_PATH, exc)
+        log.error("the data dir AND everything in it must be owned+readable by this "
+                  "process's user (uid=%d). Fix: chown -R %d:%d '%s'",
+                  os.getuid(), os.getuid(), os.getgid(), config.DATA_DIR)
+        raise RuntimeError(f"secret key not accessible: {exc}") from exc
     log.info("context=%s upstream=%s llm=%s db=%s",
              config.CONTEXT_ID, config.UPSTREAM_URL, config.LLM_ENABLED, config.DB_PATH)
     log.info("dictionary entries loaded; listening on %s:%s", config.HOST, config.PORT)
