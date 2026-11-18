@@ -4,8 +4,11 @@
 #   cp dictionary.example.yaml dictionary.yaml   # then edit with YOUR values
 #   docker compose up -d                         # proxy only (dictionary + regex)
 #
-# With the local LLM layer (pulls the model, needs the NVIDIA toolkit for GPU):
+# With the local LLM layer (pulls the model; uses an NVIDIA GPU by default, which
+# needs the NVIDIA Container Toolkit):
 #   ANONPROXY_LLM=true docker compose --profile llm up -d
+# No GPU? add the CPU override:
+#   ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.cpu.yml --profile llm up -d
 #
 # Then in your working console:
 #   ./claude_anon            # or: export ANTHROPIC_BASE_URL=http://127.0.0.1:8787 && claude
@@ -57,8 +60,10 @@ services:
     volumes:
       - ollama_models:/root/.ollama
     restart: unless-stopped
-    # GPU (optional) — needs the NVIDIA Container Toolkit. Remove this block to
-    # run the model on CPU.
+    # Defaults to an NVIDIA GPU (needs the NVIDIA Container Toolkit) — the usual
+    # case when you run a local LLM. No GPU? add the CPU override, which clears
+    # this reservation:
+    #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml --profile llm up -d
     deploy:
       resources:
         reservations:

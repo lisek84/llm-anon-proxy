@@ -32,10 +32,13 @@ sudo install -d -o 991 -g 991 -m 0700 data
 docker compose up -d                           # buduje + startuje proxy (słownik + regex)
 ```
 
-Z lokalną warstwą LLM (pobiera model; GPU przez NVIDIA toolkit):
+Z lokalną warstwą LLM (pobiera model; domyślnie na **GPU NVIDIA**, wymaga NVIDIA
+Container Toolkit):
 
 ```bash
 ANONPROXY_LLM=true docker compose --profile llm up -d
+# Brak GPU? dodaj override CPU:
+# ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.cpu.yml --profile llm up -d
 ```
 
 Następnie w konsoli roboczej:
@@ -103,11 +106,17 @@ Jeśli wdrożyłeś przez Docker powyżej, po prostu dodaj profil LLM — Ollama
 jako usługa, a proxy łączy się z nią automatycznie:
 
 ```bash
-ANONPROXY_LLM=true docker compose --profile llm up -d
+ANONPROXY_LLM=true docker compose --profile llm up -d          # GPU NVIDIA
 ```
 
-Zmień model przez `ANONPROXY_OLLAMA_MODEL=qwen3.5:9b`. Brak NVIDIA toolkit?
-Usuń blok `deploy:` z usługi `ollama`, by działać na CPU.
+Używa GPU NVIDIA (wymaga NVIDIA Container Toolkit). Brak GPU? dodaj plik override
+CPU:
+
+```bash
+ANONPROXY_LLM=true docker compose -f docker-compose.yml -f docker-compose.cpu.yml --profile llm up -d
+```
+
+Zmień model przez `ANONPROXY_OLLAMA_MODEL=qwen3.5:9b`.
 
 ### Wariant B — Natywnie (WSL / Linux, bez Dockera) — tak jest tutaj
 

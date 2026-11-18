@@ -1,0 +1,16 @@
+# CPU-only override for the Ollama service — the exception, for a host without an
+# NVIDIA GPU. The base compose reserves an NVIDIA GPU by default; this clears that
+# reservation (via the Compose `!reset` tag, needs Compose >= 2.24) so Ollama runs
+# on CPU and `docker compose up` doesn't fail with "could not select device driver
+# nvidia". Use it with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml --profile llm up -d
+#
+# On a very old Compose without `!reset`, just delete the `deploy:` block from the
+# ollama service in docker-compose.yml instead.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []

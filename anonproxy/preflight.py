@@ -60,8 +60,11 @@ def harden_permissions() -> None:
         log.warning("could not create/chmod data dir: %s", exc)
     for p in _sensitive_files():
         try:
-            if p.exists():
-                os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+            if not p.exists():
+                continue
+            if stat.S_IMODE(p.stat().st_mode) == 0o600:
+                continue  # already locked — don't fight a read-only bind mount (:ro dict)
+            os.chmod(p, stat.S_IRUSR | stat.S_IWUSR)  # 0600
         except OSError as exc:
             log.warning("could not chmod %s: %s", p, exc)
 
