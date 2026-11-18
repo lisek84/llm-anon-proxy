@@ -9,3 +9,9 @@ dictionary.yaml
 *.db-shm
 rotate.log.jsonl
 dictionary.generated.yaml
+
+# Encrypted-dictionary workflow: the DECRYPTED plaintext must never leave the
+# machine — never let it (or the encrypted blob) be committed.
+*.decrypted
+*.enc
+dictionary.yaml.*
