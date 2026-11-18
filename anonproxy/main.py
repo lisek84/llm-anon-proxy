@@ -417,7 +417,8 @@ def _deanon_tool_json(raw: str) -> tuple[str, set[str]]:
     return json.dumps(walk(obj)), restored
 
 
-async def _stream_and_deanon(resp: httpx.Response, client: httpx.AsyncClient, model: str):
+async def _stream_and_deanon(resp: httpx.Response, client: httpx.AsyncClient, model: str,
+                             anon_n: int = 0, anon_new: int = 0):
     """Restore real values in an already-open 200 SSE stream, then close it."""
     text_buf: dict[int, str] = {}
     json_buf: dict[int, str] = {}
@@ -490,7 +491,7 @@ async def _stream_and_deanon(resp: httpx.Response, client: httpx.AsyncClient, mo
                     if restored_all:
                         log.info("← restored %d surrogate(s) in streamed response",
                                  len(restored_all))
-                    events.emit_request(model, len(restored_all))
+                    events.emit_request(model, len(restored_all), anon_n, anon_new)
                 yield _sse(etype or "message", evt)
     finally:
         await resp.aclose()
@@ -518,6 +519,7 @@ async def messages(request: Request) -> Response:
     headers = _fwd_headers(request)
     want_stream = bool(body.get("stream", False))
 
+    anonymizer.begin_request()
     try:
         body = await _anon_body(body)
     except llm_detector.LLMUnavailable as exc:
@@ -540,6 +542,7 @@ async def messages(request: Request) -> Response:
         log.exception("non-fatal: leak scan failed")
 
     model = body.get("model", "?")
+    anon_n, anon_new = anonymizer.request_stats()
 
     if want_stream:
         # Open the stream and check the status BEFORE committing to streaming, so
@@ -562,7 +565,7 @@ async def messages(request: Request) -> Response:
         async def _close():  # belt-and-suspenders if the generator never ran
             await resp.aclose()
             await client.aclose()
-        return StreamingResponse(_stream_and_deanon(resp, client, model),
+        return StreamingResponse(_stream_and_deanon(resp, client, model, anon_n, anon_new),
                                  status_code=200, headers=_resp_headers(resp),
                                  media_type="text/event-stream",
                                  background=BackgroundTask(_close))
@@ -574,7 +577,7 @@ async def messages(request: Request) -> Response:
                         status_code=resp.status_code, headers=_resp_headers(resp),
                         media_type=resp.headers.get("content-type", "application/json"))
     data, restored = _deanon_json_response(resp.json())
-    events.emit_request(model, restored)
+    events.emit_request(model, restored, anon_n, anon_new)
     return Response(content=json.dumps(data), status_code=200, headers=_resp_headers(resp),
                     media_type="application/json")
 
@@ -583,6 +586,7 @@ async def messages(request: Request) -> Response:
 async def count_tokens(request: Request) -> Response:
     body = await request.json()
     headers = _fwd_headers(request)
+    anonymizer.begin_request()
     try:
         body = await _anon_body(body)
     except llm_detector.LLMUnavailable as exc:

@@ -14,6 +14,7 @@ surrogate first, over arbitrary JSON-ish structures (so tool_use inputs are
 restored to real values before Claude Code executes them).
 """
 import bisect
+import contextvars
 import hashlib
 import logging
 import re
@@ -43,6 +44,23 @@ def _cache_key(text: str, source: str) -> str:
 
 def clear_cache() -> None:
     _cache.clear()
+
+
+# Per-request accounting (so the dashboard can show "anonymized N (M new)" and,
+# in verbose mode, re-show each distinct value once per request). Request-scoped
+# via a contextvar so concurrent requests don't mix.
+_req: "contextvars.ContextVar[dict | None]" = contextvars.ContextVar("anon_req", default=None)
+
+
+def begin_request() -> None:
+    """Start per-request anonymization accounting (call once per request)."""
+    _req.set({"vals": set(), "new": 0})
+
+
+def request_stats() -> tuple[int, int]:
+    """(# distinct values anonymized this request, # of them new to the vault)."""
+    st = _req.get()
+    return (len(st["vals"]), st["new"]) if st else (0, 0)
 
 
 def _resolve_spans(spans: list[tuple]) -> list[tuple]:
@@ -236,18 +254,29 @@ def anonymize(text: str, llm_matches: list[tuple[str, str]] | None = None,
     new_count = 0
     seen_types: dict[str, int] = {}
     surrogate_of: dict[str, str] = {}
+    st = _req.get()
     for _, _, original, etype in accepted:
         if original in surrogate_of:
             continue
         surrogate, is_new = vault.get_or_create(original, etype, surrogates.generate)
         surrogate_of[original] = surrogate
         seen_types[etype] = seen_types.get(etype, 0) + 1
+        # First time this value is seen in THIS request? (for the per-request count
+        # and to re-show it once per request in verbose mode).
+        first_in_req = (original not in st["vals"]) if st is not None else is_new
+        if st is not None:
+            st["vals"].add(original)
+            if is_new:
+                st["new"] += 1
         # Logging/telemetry is best-effort: it must never break anonymization
         # (the substitution is already decided above) nor the request path.
         try:
             if is_new:
                 new_count += 1
                 audit.record(original, surrogate, etype, source)
+            # Dashboard: show a catch the first time ever, and — in verbose mode —
+            # once per request so you can see the substitutions happen each turn.
+            if first_in_req and (is_new or config.UI_VERBOSE):
                 events.emit_catch(source, etype, original, surrogate)
             if etype in leaklog.ROTATABLE:
                 leaklog.record(original, etype, "intercepted", source)

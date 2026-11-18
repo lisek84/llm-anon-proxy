@@ -68,6 +68,7 @@ def stats_json() -> JSONResponse:
     snap = events.snapshot()
     snap["recent"] = [_serialize(e) for e in snap["recent"]]
     snap["show_originals"] = config.UI_SHOW_ORIGINALS
+    snap["verbose"] = config.UI_VERBOSE
     snap["context"] = config.CONTEXT_ID
     return JSONResponse(snap)
 
@@ -132,7 +133,7 @@ _PAGE = r"""<!DOCTYPE html>
 </header>
 <div id="banner"></div>
 <main id="log"><div class="empty" id="empty">waiting for traffic… run Claude Code through the proxy</div></main>
-<footer>surrogate column is what left the machine · originals are <span id="maskmode">masked</span> · /ui</footer>
+<footer><b style="color:#7fd4a1">anonymized</b> = values hidden in the outgoing request · <b style="color:#f6c177">restored</b> = surrogates turned back to real values in the reply · green column = what left the machine · originals are <span id="maskmode">masked</span><span id="verbose"></span> · /ui</footer>
 <script>
 const log=document.getElementById('log'), chipsEl=document.getElementById('chips');
 const dot=document.getElementById('dot'), auto=document.getElementById('auto');
@@ -157,8 +158,9 @@ function add(e){
   const div=document.createElement('div');
   if(e.kind==='request'){
     div.className='row req';
+    const a=e.anon||0, an=e.anon_new||0, r=e.restored||0;
     div.innerHTML=`<span class="ts">${fmtTs(e.ts)}</span>
-      <span>↳ request handled (model ${e.model||'?'}, restored ${e.restored})</span>`;
+      <span title="anonymized = values hidden in the request sent upstream (new = first seen this session); restored = surrogates turned back into real values in the reply">↳ ${escapeHtml(e.model||'?')} · <b style="color:#7fd4a1">anonymized ${a}</b> (${an} new) · <b style="color:#f6c177">restored ${r}</b></span>`;
     reqs++;
   }else if(e.kind==='notice'){
     div.className='row';
@@ -186,6 +188,7 @@ fetch('ui/stats').then(r=>r.json()).then(s=>{
   if(s.show_originals){document.getElementById('maskmode').textContent='shown (real values)';
     document.getElementById('banner').className='banner';
     document.getElementById('banner').textContent='⚠ UI_SHOW_ORIGINALS is on — this page shows real values over HTTP.';}
+  if(s.verbose){document.getElementById('verbose').textContent=' · verbose: catches re-shown every request';}
   (s.recent||[]).forEach(add);
 }).catch(()=>{});
 const es=new EventSource('ui/events');

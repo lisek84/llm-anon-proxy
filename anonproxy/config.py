@@ -128,6 +128,11 @@ class Config:
     # agent, sharing loopback, could then read them over HTTP).
     UI_ENABLED: bool = os.getenv("ANONPROXY_UI", "true").lower() == "true"
     UI_SHOW_ORIGINALS: bool = os.getenv("ANONPROXY_UI_SHOW_ORIGINALS", "false").lower() == "true"
+    # Re-show caught values on EVERY request (once per distinct value per request),
+    # not only the first time they enter the vault. Verbose but reassuring — you
+    # see the substitutions happen each turn. Default off (keeps the feed quiet,
+    # since Claude Code resends the whole history every request).
+    UI_VERBOSE: bool = os.getenv("ANONPROXY_UI_VERBOSE", "false").lower() == "true"
 
     def __init__(self) -> None:
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)

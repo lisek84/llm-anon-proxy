@@ -240,6 +240,7 @@ Details and consequences: [docs/USAGE.md](docs/USAGE.md#mappings-persist--cleari
 | `ANONPROXY_CLIENT_UID` / `_GIDS` | _(unset)_ | numeric identity for the preflight in a container (`id -u` / `id -G`) |
 | `ANONPROXY_UI` | `true` | serve the live dashboard at `/ui` |
 | `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | reveal real values in the dashboard |
+| `ANONPROXY_UI_VERBOSE` | `false` | re-show caught values on every request (once per distinct value), not only the first time — verbose but reassuring |
 | `ANONPROXY_RESET` | _(unset)_ | `start_proxy.sh` only: `1` forget mappings · `new-key` also rotate key · `all` + logs |
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | block (503) requests with image/binary-document blocks instead of forwarding |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | block (403) endpoints other than `/v1/messages[/count_tokens]` |

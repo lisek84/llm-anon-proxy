@@ -142,6 +142,26 @@ def test_domain_surrogate_base_restored_when_model_strips_tld():
     assert wbase not in back and cbase not in back      # no bare surrogate leaked
 
 
+def test_request_stats_counts_anonymized_values():
+    anonymizer.begin_request()
+    anonymizer.anonymize("ssh of_app@of-prod-db01 185.12.34.56 for example.com", source="message")
+    n, new = anonymizer.request_stats()
+    assert n >= 3 and new >= 3          # host, ip, domain (+username) all counted
+
+
+def test_verbose_reemits_known_values(monkeypatch):
+    from anonproxy import events
+    anonymizer.begin_request()
+    anonymizer.anonymize("host of-prod-db01 here", source="message")   # now known to the vault
+    monkeypatch.setattr(config, "UI_VERBOSE", True)
+    anonymizer.begin_request()
+    base = events.snapshot()["last_id"]
+    anonymizer.anonymize("host of-prod-db01 again", source="message")   # not new, but verbose
+    reemitted = events.since(base)
+    assert any(e.get("kind") == "catch" and e.get("original") == "of-prod-db01"
+               for e in reemitted)
+
+
 def test_bare_brand_replaced():
     anon, back = rt("deploy aplikacji example na prod")
     assert "example" not in anon

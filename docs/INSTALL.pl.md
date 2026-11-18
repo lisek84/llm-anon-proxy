@@ -54,6 +54,7 @@ Następnie w konsoli roboczej:
 * Podgląd logów z kontenera:
   `docker compose exec proxy python -m anonproxy.rotate` (oraz `… anonproxy.audit`).
 * Pokaż prawdziwe wartości w dashboardzie: `ANONPROXY_UI_SHOW_ORIGINALS=true docker compose up -d`.
+* Pokazuj każde trafienie przy każdym żądaniu (nie tylko przy pierwszym): `ANONPROXY_UI_VERBOSE=true docker compose up -d`.
 * Zatrzymanie: `docker compose down` (dodaj `--profile llm`, jeśli uruchamiałeś warstwę LLM).
 * Uwaga o izolacji: `./data` na hoście zawiera vault do deanonimizacji
   (`mappings.db`, `secret.key`). Kontener działa jako dedykowany UID (991), a

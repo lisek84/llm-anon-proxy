@@ -54,6 +54,7 @@ Then in your working console:
 * Inspect logs from the container:
   `docker compose exec proxy python -m anonproxy.rotate` (and `… anonproxy.audit`).
 * Show real values in the dashboard: `ANONPROXY_UI_SHOW_ORIGINALS=true docker compose up -d`.
+* See every catch on each request (not just the first time a value is seen): `ANONPROXY_UI_VERBOSE=true docker compose up -d`.
 * Stop: `docker compose down` (add `--profile llm` if you started the LLM layer).
 * Isolation note: `./data` on the host holds the de-anonymization vault
   (`mappings.db`, `secret.key`). The container runs as a dedicated UID (991) and

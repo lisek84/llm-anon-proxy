@@ -28,13 +28,13 @@ def emit_catch(source: str, entity_type: str, original: str, surrogate: str) -> 
         _stats[entity_type] = _stats.get(entity_type, 0) + 1
 
 
-def emit_request(model: str, restored: int) -> None:
+def emit_request(model: str, restored: int, anon: int = 0, anon_new: int = 0) -> None:
     global _requests
     with _lock:
         _requests += 1
         _events.append({
             "id": next(_counter), "kind": "request", "ts": time.time(),
-            "model": model, "restored": restored,
+            "model": model, "restored": restored, "anon": anon, "anon_new": anon_new,
         })
 
 

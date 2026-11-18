@@ -245,6 +245,7 @@ Szczegóły i konsekwencje: [docs/USAGE.pl.md](docs/USAGE.pl.md).
 | `ANONPROXY_CLIENT_UID` / `_GIDS` | _(nieustawione)_ | numeryczna tożsamość dla preflight w kontenerze (`id -u` / `id -G`) |
 | `ANONPROXY_UI` | `true` | udostępnij dashboard na `/ui` |
 | `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | pokaż prawdziwe wartości w dashboardzie |
+| `ANONPROXY_UI_VERBOSE` | `false` | pokazuj złapane wartości przy każdym żądaniu (raz na wartość), nie tylko za pierwszym razem — gadatliwe, ale widać że działa |
 | `ANONPROXY_RESET` | _(nieustawione)_ | tylko `start_proxy.sh`: `1` zapomnij mapowania · `new-key` też rotacja klucza · `all` + logi |
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | blokuj (503) żądania z blokami image/binarny document zamiast je przekazywać |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | blokuj (403) endpointy inne niż `/v1/messages[/count_tokens]` |
