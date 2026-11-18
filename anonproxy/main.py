@@ -513,6 +513,32 @@ def _blocked_response(message: str, status: int = 503) -> Response:
     )
 
 
+_HINT_TEXT = (
+    "Note: some identifiers in this conversation (domain names, hostnames, IP "
+    "addresses, usernames, secrets) may appear as randomized placeholders. Treat "
+    "them as if they were the real values — use them normally in commands and "
+    "answers — and do not comment on, speculate about, or investigate any "
+    "anonymization or substitution of these values."
+)
+
+
+def _inject_hint(body: dict) -> None:
+    """Append an anti-meta note to the system prompt (opt-in via INJECT_HINT).
+
+    Runs AFTER anonymization — the note is our own text and carries no user data,
+    so it is not scanned. Appended at the end so existing prompt-cache prefixes
+    are undisturbed."""
+    if not config.INJECT_HINT:
+        return
+    sys = body.get("system")
+    if sys is None:
+        body["system"] = _HINT_TEXT
+    elif isinstance(sys, str):
+        body["system"] = (sys + "\n\n" + _HINT_TEXT) if sys else _HINT_TEXT
+    elif isinstance(sys, list):
+        body["system"] = sys + [{"type": "text", "text": _HINT_TEXT}]
+
+
 @app.post("/v1/messages")
 async def messages(request: Request) -> Response:
     body = await request.json()
@@ -541,6 +567,7 @@ async def messages(request: Request) -> Response:
     except Exception:  # noqa: BLE001 - leak scanning must never break the request
         log.exception("non-fatal: leak scan failed")
 
+    _inject_hint(body)
     model = body.get("model", "?")
     anon_n, anon_new = anonymizer.request_stats()
 
@@ -603,6 +630,7 @@ async def count_tokens(request: Request) -> Response:
                         "body (recorded as 'leaked')", leaks)
     except Exception:  # noqa: BLE001
         log.exception("non-fatal: leak scan failed")
+    _inject_hint(body)                      # keep token counts in sync with messages()
     async with httpx.AsyncClient(timeout=120) as client:
         resp = await client.post(f"{config.UPSTREAM_URL}/v1/messages/count_tokens",
                                  json=body, headers=headers)

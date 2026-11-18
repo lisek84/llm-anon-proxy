@@ -81,6 +81,19 @@ async def test_llm_skipped_for_system_and_tools(monkeypatch):
     assert len(seen) == 1                               # consulted for messages
 
 
+def test_inject_hint_opt_in_and_shapes(monkeypatch):
+    monkeypatch.setattr(config, "INJECT_HINT", True)
+    b = {"system": "orig"}; main._inject_hint(b)
+    assert b["system"].startswith("orig\n\n") and "placeholders" in b["system"]
+    b = {"system": [{"type": "text", "text": "x"}]}; main._inject_hint(b)
+    assert len(b["system"]) == 2 and "placeholders" in b["system"][1]["text"]
+    b = {}; main._inject_hint(b)
+    assert isinstance(b["system"], str) and "placeholders" in b["system"]
+    monkeypatch.setattr(config, "INJECT_HINT", False)
+    b = {"system": "orig"}; main._inject_hint(b)
+    assert b["system"] == "orig"            # off by default → untouched
+
+
 @pytest.mark.asyncio
 async def test_fail_closed_raises():
     config.LLM_FAIL_CLOSED = True

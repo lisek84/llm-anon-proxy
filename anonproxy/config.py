@@ -133,6 +133,11 @@ class Config:
     # see the substitutions happen each turn. Default off (keeps the feed quiet,
     # since Claude Code resends the whole history every request).
     UI_VERBOSE: bool = os.getenv("ANONPROXY_UI_VERBOSE", "false").lower() == "true"
+    # Append a short note to the system prompt telling the model that some
+    # identifiers may look like placeholders, to treat them as real values, and
+    # not to speculate about or investigate the anonymization. Cuts the spiral
+    # where the model notices surrogates and derails into meta-commentary.
+    INJECT_HINT: bool = os.getenv("ANONPROXY_INJECT_HINT", "false").lower() == "true"
 
     def __init__(self) -> None:
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)

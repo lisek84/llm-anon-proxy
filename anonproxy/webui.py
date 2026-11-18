@@ -153,7 +153,9 @@ function renderChips(){chipsEl.innerHTML=Object.entries(stats).sort((a,b)=>b[1]-
   document.getElementById('reqs').textContent=reqs;
   document.getElementById('notices').textContent=notices?('⚠ '+notices+' un-anonymized · '):'';}
 function trim(){while(log.children.length>600)log.removeChild(log.firstChild);}
+const _seen=new Set();
 function add(e){
+  if(e&&e.id!=null){if(_seen.has(e.id))return;_seen.add(e.id);}  // dedup snapshot vs stream replay
   if(empty){empty.remove();empty=null;}
   const div=document.createElement('div');
   if(e.kind==='request'){
@@ -190,11 +192,14 @@ fetch('ui/stats').then(r=>r.json()).then(s=>{
     document.getElementById('banner').textContent='⚠ UI_SHOW_ORIGINALS is on — this page shows real values over HTTP.';}
   if(s.verbose){document.getElementById('verbose').textContent=' · verbose: catches re-shown every request';}
   (s.recent||[]).forEach(add);
-}).catch(()=>{});
-const es=new EventSource('ui/events');
-es.onopen=()=>dot.classList.add('live');
-es.onerror=()=>dot.classList.remove('live');
-es.onmessage=ev=>{try{add(JSON.parse(ev.data));}catch(e){}};
+  startStream(s.last_id||0);
+}).catch(()=>startStream(0));
+function startStream(after){
+  const es=new EventSource('ui/events?after='+after);
+  es.onopen=()=>dot.classList.add('live');
+  es.onerror=()=>dot.classList.remove('live');
+  es.onmessage=ev=>{try{add(JSON.parse(ev.data));}catch(e){}};
+}
 </script>
 </body>
 </html>

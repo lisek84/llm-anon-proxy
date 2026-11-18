@@ -241,6 +241,7 @@ Details and consequences: [docs/USAGE.md](docs/USAGE.md#mappings-persist--cleari
 | `ANONPROXY_UI` | `true` | serve the live dashboard at `/ui` |
 | `ANONPROXY_UI_SHOW_ORIGINALS` | `false` | reveal real values in the dashboard |
 | `ANONPROXY_UI_VERBOSE` | `false` | re-show caught values on every request (once per distinct value), not only the first time — verbose but reassuring |
+| `ANONPROXY_INJECT_HINT` | `false` | append a note to the system prompt telling the model to treat placeholder-looking identifiers as real and not speculate about anonymization |
 | `ANONPROXY_RESET` | _(unset)_ | `start_proxy.sh` only: `1` forget mappings · `new-key` also rotate key · `all` + logs |
 | `ANONPROXY_BLOCK_UNSCANNABLE` | `false` | block (503) requests with image/binary-document blocks instead of forwarding |
 | `ANONPROXY_BLOCK_UNKNOWN` | `false` | block (403) endpoints other than `/v1/messages[/count_tokens]` |
