@@ -438,6 +438,29 @@ def test_surrogates_are_shell_inert():
                     f"{etype} surrogate {sur!r} contains a shell metacharacter"
 
 
+def test_bare_p_flag_is_not_a_credential():
+    # mkdir -p / cp -p / ssh -p <port> must NOT have their following path/port
+    # eaten as a "password" — that corrupted the agent's file commands.
+    for cmd in ("mkdir -p /tmp/claude-1000/x/scratchpad/web",
+                "cp -p /tmp/x/scratchpad/web dest",
+                "rsync -p a host:/b",
+                "ssh -p 2222 root@box"):
+        assert "CRED-" not in anonymizer.anonymize(cmd, source="t"), cmd
+
+
+def test_mysql_inline_password_still_caught():
+    out = anonymizer.anonymize("mysql -uroot -pHunter2pass -h db", source="t")
+    assert "Hunter2pass" not in out and "CRED-" in out
+
+
+def test_invalid_ipv4_fragment_not_anonymized():
+    # "0.16.04.5" (leading-zero octet) is a version-ish fragment, not an IP.
+    out = anonymizer.anonymize("build 0.16.04.5 here", source="t")
+    assert out == "build 0.16.04.5 here"
+    # a real IP is still caught
+    assert "192.168.140.10" not in anonymizer.anonymize("host 192.168.140.10", source="t")
+
+
 def test_p_flag_not_matched_inside_word():
     # The -p credential rule must not fire inside "of-prod-db01".
     anon = anonymizer.anonymize("ssh of_app@of-prod-db01", source="test")

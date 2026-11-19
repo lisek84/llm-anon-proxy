@@ -84,11 +84,18 @@ _add("CREDENTIAL",
 _add("CREDENTIAL",
      r"(?i)define\(\s*['\"][A-Z_]*(?:PASS|SECRET|KEY|SALT)[A-Z_]*['\"]\s*,\s*"
      r"(?P<v>'[^']+'|\"[^\"]+\")", "v")
-# CLI -p<value> / -p <value> / --password <value>. The flag must be a real
-# token (start of string or preceded by whitespace), so it never fires inside a
-# word like "of-prod-db01".
+# --password / --pass <value> (long forms are unambiguous). A bare "-p" is
+# deliberately NOT matched here: it collides with mkdir -p, cp -p, ssh -p <port>,
+# rsync -p, tar -p…, and would eat the following path/port as a "password",
+# corrupting the agent's shell commands. MySQL's inline -p<password> is below.
 _add("CREDENTIAL",
-     r"(?i)(?<!\S)(?:--password|--pass|-p)[=\s]?(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
+     r"(?i)(?<!\S)(?:--password|--pass)(?![\w-])[=\s]?(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
+# MySQL inline password: `mysql/mysqldump/mariadb … -p<password>` ATTACHED (the
+# spaced form takes no argument). Gated to the DB client so it can never match a
+# bare `-p` flag of some other command (e.g. `mkdir -p`).
+_add("CREDENTIAL",
+     r"(?i)\b(?:mysql|mysqldump|mariadb|mariadb-dump)\b[^\n]{0,200}?(?<![\w-])-p"
+     r"(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
 # redis requirepass
 _add("CREDENTIAL", r"(?i)\brequirepass\s+(?P<v>'[^']+'|\"[^\"]+\"|\S+)", "v")
 # sshpass -p
@@ -294,8 +301,18 @@ def detect(text: str) -> list[tuple[str, str]]:
                     continue
                 if norm in _IP6_ALLOWLIST or val.lower() in _USER_ALLOW:
                     continue
-            elif etype == "IP_ADDRESS" and (val in _IP_ALLOWLIST or val in _USER_ALLOW):
-                continue
+            elif etype in ("IP_ADDRESS", "CIDR"):
+                # IPv4 (or v4 CIDR): validate strictly so version-ish fragments
+                # like "0.16.04.5" (leading-zero octet) are rejected, not masked.
+                try:
+                    host = val.split("/")[0]
+                    ipaddress.ip_address(host)
+                    if "/" in val:
+                        ipaddress.ip_network(val, strict=False)
+                except ValueError:
+                    continue
+                if val in _IP_ALLOWLIST or val in _USER_ALLOW:
+                    continue
             if etype == "DOMAIN":
                 low = val.lower().rstrip(".")
                 if low in _DOMAIN_CODE_DENYLIST:
