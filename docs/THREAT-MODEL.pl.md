@@ -119,6 +119,12 @@ NFC czy NFD, a jej kodowania liczone są z bajtów UTF-8. Deklaruj takie wartoś
 dokładnie tak, jak się pojawiają; dopasowanie jawnego tekstu jest niewrażliwe na
 wielkość liter.
 
+Konsekwencja: skoro cały tekst żądania jest normalizowany do NFC, wartość która
+przyszła w NFD jest też *przywracana* w NFC. To ten sam tekst, ale na systemie
+plików wrażliwym na bajty to różne nazwy — więc dokładna ścieżka w NFD (rzadkie;
+głównie macOS) wróci w postaci NFC. Jeśli zależysz od dosłownych bajtów takiej
+ścieżki, trzymaj ją poza przekazywaną rozmową.
+
 Nadal **nie** pokryte: kodowania wartości, której *nie ma* w słowniku (dowolnego
 bloba base64 nie można uznać za wrażliwy bez zalewu fałszywych trafień — ta sama
 granica co szyfrowanie); kompresja (gzip/deflate) lub szyfrowanie; podwójne

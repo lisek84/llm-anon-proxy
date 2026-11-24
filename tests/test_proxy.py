@@ -431,3 +431,22 @@ def test_deanon_response_block_restores_text_and_toolinput_not_thinking():
     tu = {"type": "tool_use", "name": "bash", "input": {"cmd": f"ping {host_sur}"}}
     main._deanon_response_block(tu)
     assert tu["input"]["cmd"] == "ping prod-db01.acme.pl"
+
+
+def test_deanon_response_block_restores_server_tool_use_and_search_result():
+    # RESTORE fix: server_tool_use (web_search/code_execution) input and
+    # web_search_tool_result content must be restored, like other tool blocks.
+    from anonproxy import main
+    host_sur = anonymizer.anonymize("secretcorp.com", source="t")
+
+    stu = {"type": "server_tool_use", "id": "srv_1", "name": "web_search",
+           "input": {"query": f"status of {host_sur}"}}
+    main._deanon_response_block(stu)
+    assert stu["input"]["query"] == "status of secretcorp.com"
+
+    wsr = {"type": "web_search_tool_result", "tool_use_id": "srv_1",
+           "content": [{"type": "web_search_result", "title": f"docs {host_sur}",
+                        "url": f"https://{host_sur}/x"}]}
+    main._deanon_response_block(wsr)
+    assert wsr["content"][0]["title"] == "docs secretcorp.com"
+    assert wsr["content"][0]["url"] == "https://secretcorp.com/x"

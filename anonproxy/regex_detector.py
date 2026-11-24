@@ -106,6 +106,12 @@ _add("CREDENTIAL", r"(?i)\b(?:Bearer|Basic)\s+(?P<v>[A-Za-z0-9+/._~=-]{16,})", "
 _add("CREDENTIAL", r"(?i)\bstats\s+auth\s+[^\s:]+:(?P<v>\S+)", "v")
 # Credentials embedded in URLs: proto://user:pass@host
 _add("CREDENTIAL", r"(?i)[a-z][a-z0-9+.\-]*://[^:/\s]+:(?P<v>[^@/\s]+)@", "v")
+# The DSN's USERNAME (proto://USER:pass@host). The password above is caught as a
+# CREDENTIAL, but the login (often a real service account like svc_backup) would
+# otherwise leak: _DSN_BEFORE suppresses the EMAIL rule for the "pass@host" part,
+# and nothing else covers the user. Emit it as USERNAME; a generic login
+# (postgres, root, …) is kept visible in detect() via _SSH_LOGINS.
+_add("USERNAME", r"(?i)(?<=://)(?P<v>[^:/\s@]+)(?=:[^@/\s]+@)", "v")
 
 # ── Hashes (standalone hex) ───────────────────────────────────────────────────
 _add("HASH", r"\b[0-9a-fA-F]{32}\b")   # MD5 / NTLM
@@ -289,6 +295,8 @@ def detect(text: str) -> list[tuple[str, str]]:
                         seen.add(k)
                         out.append(k)
                 continue
+            if etype == "USERNAME" and val.lower() in _SSH_LOGINS:
+                continue  # generic DSN/service login (postgres, root, …) — keep visible
             if etype in ("IP_ADDRESS", "CIDR") and ":" in val:
                 # IPv6 (or v6 CIDR): validate with ipaddress — this is what
                 # actually rejects regex false positives (MACs, times, hex).

@@ -402,6 +402,22 @@ def test_dsn_password_is_credential_not_email():
     assert "CRED-" in anon                # password handled as a credential
 
 
+def test_dsn_specific_login_anonymized_generic_kept():
+    # LEAK fix: a non-generic DSN username (a real service account) must not leak;
+    # a generic login (postgres/root/…) stays visible like an SSH login.
+    text = "postgres://svc_backup:DbSecret123@db.internal:5432/app"
+    anon, back = rt(text)
+    assert "svc_backup" not in anon          # specific login anonymized
+    assert "DbSecret123" not in anon         # password still caught
+    assert "db.internal" not in anon         # host still anonymized
+    assert back == text                      # round-trips exactly
+
+    generic = "postgres://postgres:DbSecret123@db.internal/app"
+    anon2 = anonymizer.anonymize(generic, source="test")
+    assert "postgres://postgres:" in anon2   # generic login kept verbatim
+    assert "DbSecret123" not in anon2
+
+
 def test_surrogates_are_shell_inert():
     # A surrogate may reach a shell/path if the model mangles it past the
     # restorer, so NO surrogate may contain a character that changes a command's

@@ -118,6 +118,12 @@ Unicode is normalized to NFC on both sides, so an accented or Polish value
 encodings are computed from UTF-8 bytes. Declare such values exactly as they
 appear; matching is case-insensitive for plain text.
 
+One consequence: because the whole request text is normalized to NFC, a value
+that arrived in NFD is also *restored* in NFC. The two are the same text, but on
+a byte-sensitive filesystem they are different names — so an exact NFD path
+(rare; mostly macOS) round-trips as its NFC form. If you depend on the literal
+bytes of such a path, keep it out of the proxied conversation.
+
 Still **not** covered: encodings of a value that is *not* in the dictionary (an
 arbitrary base64 blob cannot be assumed sensitive without drowning you in false
 positives — the same limit as encryption); compression (gzip/deflate) or

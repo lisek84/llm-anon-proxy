@@ -250,13 +250,17 @@ async def _anon_block(block: dict, source: str) -> dict:
         # surrogates, so thinking carries no real data, and altering it would
         # break the block's signature (the API rejects a mismatched thinking).
         pass
-    elif t in ("tool_use", "mcp_tool_use"):
+    elif t in ("tool_use", "mcp_tool_use", "server_tool_use"):
         # mcp_tool_use is a remote-MCP tool call; its input is user data heading
         # upstream, so anonymize it exactly like a normal tool_use input.
+        # server_tool_use is a prior assistant turn's server-side call resent as
+        # history — its input already holds surrogates, but re-anonymize for
+        # symmetry (idempotent) rather than warn about an "un-anonymized" type.
         inp = block.get("input", {})
         matches = [] if source in _LLM_SKIP_SOURCES else await _llm(json.dumps(inp))
         block["input"] = anonymizer.anonymize_value(inp, matches, source)
-    elif t in ("tool_result", "mcp_tool_result"):
+    elif t in ("tool_result", "mcp_tool_result",
+               "web_search_tool_result", "code_execution_tool_result"):
         c = block.get("content")
         if isinstance(c, str):
             block["content"] = await _anon_text(c, source)
@@ -366,16 +370,18 @@ def _deanon_response_block(block: dict) -> set[str]:
         restored |= r
     elif t in ("thinking", "redacted_thinking"):
         pass  # pass through unchanged (see _anon_block) — preserve signature
-    elif t in ("tool_use", "mcp_tool_use"):
+    elif t in ("tool_use", "mcp_tool_use", "server_tool_use"):
         # Symmetric with _anon_block (and with the streaming path, which
-        # restores any input_json_delta): a non-streaming mcp_tool_use must
+        # restores any input_json_delta): a non-streaming *_tool_use must
         # have its surrogate input restored too, or Claude Code gets fake
-        # hosts/IPs back. Use the _detailed variant so the restored count is
-        # accurate (not just text blocks).
+        # hosts/IPs back. server_tool_use (web_search / code_execution) is an
+        # Anthropic server-side call whose input the model built from surrogates;
+        # restore it so the shown transcript carries real values. Use the
+        # _detailed variant so the restored count is accurate (not just text).
         if block.get("input"):
             block["input"], r = anonymizer.deanon_value_detailed(block.get("input", {}))
             restored |= r
-    elif t == "mcp_tool_result":
+    elif t in ("mcp_tool_result", "web_search_tool_result", "code_execution_tool_result"):
         c = block.get("content")
         if isinstance(c, str):
             block["content"], r = anonymizer.deanonymize_detailed(c)
