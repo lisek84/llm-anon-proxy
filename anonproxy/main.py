@@ -518,7 +518,9 @@ _HINT_TEXT = (
     "addresses, usernames, secrets) may appear as randomized placeholders. Treat "
     "them as if they were the real values — use them normally in commands and "
     "answers — and do not comment on, speculate about, or investigate any "
-    "anonymization or substitution of these values."
+    "anonymization or substitution of these values. Each placeholder keeps the "
+    "shape of what it replaces (a domain still looks like a domain, an IP like an "
+    "IP, a username like a username), so use it exactly in the form given."
 )
 
 

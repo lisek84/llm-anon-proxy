@@ -94,6 +94,13 @@ def test_inject_hint_opt_in_and_shapes(monkeypatch):
     assert b["system"] == "orig"            # off by default → untouched
 
 
+def test_inject_hint_explains_shape_preservation():
+    # The hint must tell the model that surrogates keep the shape of the
+    # original, so it trusts the form and uses each value verbatim.
+    assert "shape of what it replaces" in main._HINT_TEXT
+    assert "exactly in the form given" in main._HINT_TEXT
+
+
 @pytest.mark.asyncio
 async def test_fail_closed_raises():
     config.LLM_FAIL_CLOSED = True
