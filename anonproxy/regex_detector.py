@@ -79,17 +79,17 @@ _add("TOKEN", r"\bglpat-[A-Za-z0-9_-]{20,}\b")  # GitLab PAT
 _add("CREDENTIAL",
      r"(?i)(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|"
      r"private[_-]?key|auth[_-]?token|client[_-]?secret|db[_-]?pass\w*)"
-     r"\s*[:=]\s*(?P<v>'[^']+'|\"[^\"]+\"|[^\s,;]+)", "v")
+     r"\s*[:=]\s*(?P<v>'[^'\n]+'|\"[^\"\n]+\"|[^\s,;]+)", "v")
 # define('DB_PASSWORD', 'value')  (PHP / wp-config)
 _add("CREDENTIAL",
      r"(?i)define\(\s*['\"][A-Z_]*(?:PASS|SECRET|KEY|SALT)[A-Z_]*['\"]\s*,\s*"
-     r"(?P<v>'[^']+'|\"[^\"]+\")", "v")
+     r"(?P<v>'[^'\n]+'|\"[^\"\n]+\")", "v")
 # --password / --pass <value> (long forms are unambiguous). A bare "-p" is
 # deliberately NOT matched here: it collides with mkdir -p, cp -p, ssh -p <port>,
 # rsync -p, tar -p…, and would eat the following path/port as a "password",
 # corrupting the agent's shell commands. MySQL's inline -p<password> is below.
 _add("CREDENTIAL",
-     r"(?i)(?<!\S)(?:--password|--pass)(?![\w-])[=\s]?(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
+     r"(?i)(?<!\S)(?:--password|--pass)(?![\w-])[=\s]?(?P<v>'[^'\n]+'|\"[^\"\n]+\"|[^\s'\"]{3,})", "v")
 # MySQL inline password: `mysql/mysqldump/mariadb … -p<password>` ATTACHED (the
 # spaced form takes no argument). Gated to the DB client so it can never match a
 # bare `-p` flag of some other command (e.g. `mkdir -p`).
@@ -97,9 +97,9 @@ _add("CREDENTIAL",
      r"(?i)\b(?:mysql|mysqldump|mariadb|mariadb-dump)\b[^\n]{0,200}?(?<![\w-])-p"
      r"(?P<v>'[^']+'|\"[^\"]+\"|[^\s'\"]{3,})", "v")
 # redis requirepass
-_add("CREDENTIAL", r"(?i)\brequirepass\s+(?P<v>'[^']+'|\"[^\"]+\"|\S+)", "v")
+_add("CREDENTIAL", r"(?i)\brequirepass\s+(?P<v>'[^'\n]+'|\"[^\"\n]+\"|\S+)", "v")
 # sshpass -p
-_add("CREDENTIAL", r"(?i)\bsshpass\s+-p\s*(?P<v>'[^']+'|\"[^\"]+\"|\S+)", "v")
+_add("CREDENTIAL", r"(?i)\bsshpass\s+-p\s*(?P<v>'[^'\n]+'|\"[^\"\n]+\"|\S+)", "v")
 # Authorization: Bearer / Basic
 _add("CREDENTIAL", r"(?i)\b(?:Bearer|Basic)\s+(?P<v>[A-Za-z0-9+/._~=-]{16,})", "v")
 # HAProxy stats auth  (stats auth <user>:<password>) — keyword-gated, so no FP
@@ -229,6 +229,7 @@ _SSH_LOGINS = {
     "fedora", "rocky", "almalinux", "alma", "azureuser", "opc", "git", "deploy",
     "pi", "vagrant", "www-data", "postgres", "mysql", "oracle", "ansible",
     "cloud-user", "cloud", "core", "user", "dev", "ops", "sysadmin", "support",
+    "oauth2", "token", "x-access-token",  # fixed literal logins in token-auth URLs
 }
 
 _IP_ALLOWLIST = {
@@ -266,6 +267,24 @@ def _domain_allowed(low: str) -> bool:
             or any(low == d or low.endswith("." + d) for d in _USER_ALLOW))
 
 
+# A captured secret/username that is ENTIRELY a variable, template or placeholder
+# reference ($VAR, ${VAR}, $(VAR), {{ … }}, <PLACEHOLDER>, %(var)s) carries no real
+# secret — it is config/template plumbing. Masking it only corrupts the template
+# the agent is editing and adds dashboard noise, so such values are skipped.
+_PLACEHOLDER_VALUE = re.compile(
+    r"""^(?:
+        \$\{[^}]+\}            |   # ${VAR}
+        \$\([^)]+\)            |   # $(VAR) or shell cmd subst
+        \$[A-Za-z_]\w*         |   # $VAR
+        \{\{.*\}\}             |   # {{ jinja/helm }}
+        <[A-Za-z0-9_.\- ]+>    |   # <PLACEHOLDER>
+        %\([^)]+\)[sd]         |   # %(var)s  python
+        \{[A-Za-z_]\w*\}           # {var}   str.format
+    )$""",
+    re.VERBOSE,
+)
+
+
 def detect(text: str) -> list[tuple[str, str]]:
     if not text:
         return []
@@ -297,6 +316,8 @@ def detect(text: str) -> list[tuple[str, str]]:
                 continue
             if etype == "USERNAME" and val.lower() in _SSH_LOGINS:
                 continue  # generic DSN/service login (postgres, root, …) — keep visible
+            if etype in ("CREDENTIAL", "USERNAME") and _PLACEHOLDER_VALUE.match(val):
+                continue  # $VAR / ${VAR} / $(VAR) / {{…}} / <PLACEHOLDER> — not a secret
             if etype in ("IP_ADDRESS", "CIDR") and ":" in val:
                 # IPv6 (or v6 CIDR): validate with ipaddress — this is what
                 # actually rejects regex false positives (MACs, times, hex).

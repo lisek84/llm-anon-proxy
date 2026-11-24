@@ -676,3 +676,35 @@ def test_cctld_base_still_preserves_true_subdomain():
     anon, back = rt("open shop.acme.co.uk")
     assert "acme" not in anon and "shop." in anon
     assert back == "open shop.acme.co.uk"
+
+
+def test_placeholder_values_are_not_credentials_or_usernames():
+    # Config/template plumbing (variable, jinja/helm, placeholder) carries no
+    # secret; masking it would corrupt the template the agent edits. (These
+    # forms came up repeatedly in a dry-run over a DevOps repo; values here are
+    # synthetic.)
+    from anonproxy import regex_detector as rd
+    samples = [
+        'DATABASE_URL="postgres://$dbuser:$dbpass@db:5432/app"',   # $var login+pass
+        'url: postgres://$(DB_USER_VAR):x@h/db',                   # $(cmd) login
+        'password: ${EXAMPLE_LDAP_PASSWORD}',                      # ${VAR}
+        'secret: "{{ example_secret | default(\'\') }}"',          # jinja/helm
+        'password: <PLACEHOLDER_SECRET>',                          # <PLACEHOLDER>
+    ]
+    for s in samples:
+        got = {v for v, _ in rd.detect(s)}
+        for junk in ("$dbuser", "$(DB_USER_VAR)", "${EXAMPLE_LDAP_PASSWORD}",
+                     "<PLACEHOLDER_SECRET>"):
+            assert junk not in got, f"{junk!r} wrongly detected in {s!r}"
+        assert not any(v.startswith("{{") for v in got), f"template masked in {s!r}"
+
+
+def test_credential_rule_does_not_span_newlines():
+    # A quoted secret value must not swallow following lines (a shell/case block),
+    # which would mangle the script the model sees. Password has no newline.
+    text = "password: 'topsecret'\necho hi\ncase $x in\n  a) ;;\nesac\n"
+    anon, back = rt(text)
+    assert "topsecret" not in anon           # the real secret IS masked
+    assert "echo hi" in anon                 # the following script is untouched
+    assert "case $x in" in anon
+    assert back == text                      # exact round-trip
