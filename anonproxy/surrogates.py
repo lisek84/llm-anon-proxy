@@ -78,7 +78,7 @@ _ALNUM = string.ascii_letters + string.digits
 
 # Common multi-label public suffixes, so acme.co.uk / shop.acme.co.uk share a base
 # (we don't ship the full Public Suffix List; this covers the frequent cases).
-_MULTI_SUFFIX = frozenset((
+_CCTLD_SUFFIX = frozenset((
     "co.uk", "org.uk", "gov.uk", "ac.uk", "me.uk", "net.uk", "sch.uk", "ltd.uk", "plc.uk",
     "com.pl", "net.pl", "org.pl", "gov.pl", "edu.pl", "waw.pl",
     "com.au", "net.au", "org.au", "gov.au", "edu.au", "id.au",
@@ -86,6 +86,22 @@ _MULTI_SUFFIX = frozenset((
     "co.nz", "org.nz", "govt.nz", "co.za", "org.za", "co.in", "net.in", "org.in",
     "com.br", "com.cn", "com.tr", "com.mx", "com.ar", "com.sg", "com.hk", "com.ua",
 ))
+
+# SaaS / hosting public suffixes where the LEFTMOST label is a tenant identity
+# (your GitHub Pages user, Azure site, Heroku app, …) — often a company/client
+# name. Treating them as public suffixes folds that label INTO the surrogated
+# base, so `acmecorp.github.io` becomes `<base>.example` instead of leaking
+# `acmecorp` as a preserved subdomain under the default "preserve" policy.
+# (Deeper multi-level cases like bucket.s3.amazonaws.com aren't covered by this
+# last-two-labels scheme; put those in the dictionary if they matter to you.)
+_SAAS_SUFFIX = frozenset((
+    "github.io", "gitlab.io", "pages.dev", "workers.dev", "r2.dev",
+    "azurewebsites.net", "cloudfront.net", "herokuapp.com",
+    "vercel.app", "netlify.app", "web.app", "firebaseapp.com",
+    "onrender.com", "fly.dev", "ngrok.io", "ngrok.app", "trycloudflare.com",
+))
+
+_MULTI_SUFFIX = _CCTLD_SUFFIX | _SAAS_SUFFIX
 
 
 def _registrable(host: str) -> str:

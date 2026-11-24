@@ -350,31 +350,46 @@ async def _anon_schema_text(obj) -> None:
 
 # ── Response deanonymization ──────────────────────────────────────────────────
 
+def _deanon_response_block(block: dict) -> set[str]:
+    """Restore real values inside ONE response content block, in place; return
+    the set of surrogates replaced. Shared by the non-streaming JSON path and the
+    streaming content_block_start path so a complete block delivered without
+    deltas (a server tool result, a future block type) is restored the same way.
+    thinking / redacted_thinking pass through untouched to preserve the signature.
+    """
+    if not isinstance(block, dict):
+        return set()
+    t = block.get("type")
+    restored: set[str] = set()
+    if t == "text" and isinstance(block.get("text"), str):
+        block["text"], r = anonymizer.deanonymize_detailed(block["text"])
+        restored |= r
+    elif t in ("thinking", "redacted_thinking"):
+        pass  # pass through unchanged (see _anon_block) — preserve signature
+    elif t in ("tool_use", "mcp_tool_use"):
+        # Symmetric with _anon_block (and with the streaming path, which
+        # restores any input_json_delta): a non-streaming mcp_tool_use must
+        # have its surrogate input restored too, or Claude Code gets fake
+        # hosts/IPs back. Use the _detailed variant so the restored count is
+        # accurate (not just text blocks).
+        if block.get("input"):
+            block["input"], r = anonymizer.deanon_value_detailed(block.get("input", {}))
+            restored |= r
+    elif t == "mcp_tool_result":
+        c = block.get("content")
+        if isinstance(c, str):
+            block["content"], r = anonymizer.deanonymize_detailed(c)
+            restored |= r
+        elif isinstance(c, list):
+            block["content"], r = anonymizer.deanon_value_detailed(c)
+            restored |= r
+    return restored
+
+
 def _deanon_json_response(data: dict) -> tuple[dict, int]:
     restored: set[str] = set()
     for block in data.get("content", []):
-        t = block.get("type")
-        if t == "text" and isinstance(block.get("text"), str):
-            block["text"], r = anonymizer.deanonymize_detailed(block["text"])
-            restored |= r
-        elif t == "thinking":
-            pass  # pass through unchanged (see _anon_block) — preserve signature
-        elif t in ("tool_use", "mcp_tool_use"):
-            # Symmetric with _anon_block (and with the streaming path, which
-            # restores any input_json_delta): a non-streaming mcp_tool_use must
-            # have its surrogate input restored too, or Claude Code gets fake
-            # hosts/IPs back. Use the _detailed variant so the restored count is
-            # accurate (not just text blocks).
-            block["input"], r = anonymizer.deanon_value_detailed(block.get("input", {}))
-            restored |= r
-        elif t == "mcp_tool_result":
-            c = block.get("content")
-            if isinstance(c, str):
-                block["content"], r = anonymizer.deanonymize_detailed(c)
-                restored |= r
-            elif isinstance(c, list):
-                block["content"], r = anonymizer.deanon_value_detailed(c)
-                restored |= r
+        restored |= _deanon_response_block(block)
     if restored:
         log.info("← restored %d surrogate(s) in response", len(restored))
     return data, len(restored)
@@ -447,9 +462,16 @@ async def _stream_and_deanon(resp: httpx.Response, client: httpx.AsyncClient, mo
 
             if etype == "content_block_start":
                 idx = evt.get("index", 0)
-                block_type[idx] = evt.get("content_block", {}).get("type", "text")
+                cb = evt.get("content_block", {})
+                block_type[idx] = cb.get("type", "text")
                 text_buf[idx] = ""
                 json_buf[idx] = ""
+                # A block's opening frame is normally empty (text ""/input {}),
+                # but a complete block delivered without deltas (a server tool
+                # result, a future type) can carry restorable values here. Restore
+                # them in place; thinking is left untouched. No double-handling:
+                # text_buf starts empty and accumulates only later deltas.
+                restored_all |= _deanon_response_block(cb)
                 yield _sse("content_block_start", evt)
 
             elif etype == "content_block_delta":
@@ -650,7 +672,12 @@ async def count_tokens(request: Request) -> Response:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "context": config.CONTEXT_ID, "mappings": vault.stats()}
+    # Deliberately minimal: /health is reachable WITHOUT the proxy token (so a
+    # liveness probe needs no secret), so it must not disclose the context name
+    # (which may itself be a client/project identifier) or the per-type mapping
+    # counts (the shape of what's being processed). Detailed stats live behind
+    # the token at /ui/stats.
+    return {"status": "ok"}
 
 
 @app.get("/favicon.ico")

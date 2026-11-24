@@ -286,3 +286,7 @@ oraz zasada blokowania przy niedostępnym LLM pochodzą stamtąd; wolny od koliz
 deterministyczny vault, pokrycie pełnej historii + `tool_use`, prawdziwe
 przywracanie strumieniowe, nasłuch tylko na loopbacku i rejestr rotacji są już
 własnym wkładem tego projektu.
+
+## Licencja
+
+MIT — zobacz [LICENSE](LICENSE).

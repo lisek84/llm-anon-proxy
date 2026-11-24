@@ -408,3 +408,26 @@ async def test_inline_tool_addition_block_anonymized():
     assert "of-prod-db01" not in tool["description"]
     assert "185.12.34.56" not in tool["description"]
     assert "example.com" not in tool["input_schema"]["properties"]["host"]["description"]
+
+
+def test_deanon_response_block_restores_text_and_toolinput_not_thinking():
+    # Shared helper used by both the JSON and the streaming content_block_start
+    # paths. A complete block delivered without deltas must still be restored.
+    from anonproxy import main
+    sur = anonymizer.anonymize("ssh root@prod-db01.acme.pl", source="t")
+    # the surrogate host appears in a would-be server-delivered block
+    text_block = {"type": "text", "text": f"log in with: {sur}"}
+    r = main._deanon_response_block(text_block)
+    assert "prod-db01.acme.pl" in text_block["text"] and r
+
+    # thinking passes through untouched (signature must not change)
+    thinking = {"type": "thinking", "thinking": sur, "signature": "sig"}
+    before = dict(thinking)
+    assert main._deanon_response_block(thinking) == set()
+    assert thinking == before
+
+    # a tool_use whose input carries a surrogate host is restored
+    host_sur = anonymizer.anonymize("prod-db01.acme.pl", source="t")
+    tu = {"type": "tool_use", "name": "bash", "input": {"cmd": f"ping {host_sur}"}}
+    main._deanon_response_block(tu)
+    assert tu["input"]["cmd"] == "ping prod-db01.acme.pl"

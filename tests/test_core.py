@@ -635,3 +635,28 @@ def test_reverse_cache_invalidates_when_new_mapping_added():
     a2 = anonymizer.anonymize("second host two.example.org", source="test")  # new insert(s)
     assert "two.example.org" not in a2
     assert anonymizer.deanonymize(a2) == "second host two.example.org"
+
+
+@pytest.mark.parametrize("host,tenant", [
+    ("acmecorp.github.io", "acmecorp"),
+    ("tenant.azurewebsites.net", "tenant"),
+    ("customer.cloudfront.net", "customer"),
+    ("myapp.herokuapp.com", "myapp"),
+    ("client.vercel.app", "client"),
+])
+def test_saas_tenant_label_not_leaked_in_surrogate(host, tenant):
+    # Under the default "preserve" policy the leftmost label of a SaaS host is a
+    # tenant identity (often a company name). It must be folded into the
+    # surrogated base, not preserved verbatim.
+    anon, back = rt(f"deploy to {host}")
+    assert tenant not in anon, f"tenant label {tenant!r} leaked in {anon!r}"
+    assert host not in anon
+    assert back == f"deploy to {host}"
+
+
+def test_cctld_base_still_preserves_true_subdomain():
+    # Regression guard: real subdomains under a ccTLD (shop.acme.co.uk) keep the
+    # base (acme) hidden but the ordinary subdomain (shop) is still preserved.
+    anon, back = rt("open shop.acme.co.uk")
+    assert "acme" not in anon and "shop." in anon
+    assert back == "open shop.acme.co.uk"

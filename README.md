@@ -280,6 +280,10 @@ and the fail-closed-on-LLM-down principle come from there; the collision-free
 deterministic vault, full-history + `tool_use` coverage, real streaming
 restoration, loopback-only binding, and the rotation log are this project's.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ## Repository metadata
 
 GitHub topics and the About description are set in the repo UI (Settings → About),
