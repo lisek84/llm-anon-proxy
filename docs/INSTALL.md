@@ -207,11 +207,18 @@ claude
 
 **2. Your own cert** (e.g. an internal CA or Let's Encrypt): set
 `ANONPROXY_TLS_CERT` and `ANONPROXY_TLS_KEY` instead — then clients need no
-`NODE_EXTRA_CA_CERTS`.
+`NODE_EXTRA_CA_CERTS`. A reverse proxy is **not** required for a commercial or
+Let's Encrypt cert — point these two at your `fullchain.pem` / `privkey.pem` and
+uvicorn serves TLS directly. Note: a Let's Encrypt cert expires every ~90 days,
+and uvicorn reads the cert only at startup — it does **not** reload it in place.
+So after `certbot renew` you must restart the proxy (e.g. a certbot
+`--deploy-hook` that runs `systemctl restart anonproxy` / `docker compose restart`)
+or the served cert will go stale. If you'd rather not manage that, use option 3.
 
 **3. Terminate TLS at a reverse proxy** (recommended for production): run this
 proxy on loopback and put nginx / haproxy / Caddy in front with a real
-certificate, forwarding to `127.0.0.1:8787`. Example nginx:
+certificate, forwarding to `127.0.0.1:8787`. The front proxy handles cert renewal
+and hot-reload for you. Example nginx:
 
 ```nginx
 server {

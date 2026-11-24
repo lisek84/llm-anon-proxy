@@ -43,7 +43,9 @@ def _cache_key(text: str, source: str) -> str:
 
 
 def clear_cache() -> None:
+    global _reverse_snapshot
     _cache.clear()
+    _reverse_snapshot = None
 
 
 # Per-request accounting (so the dashboard can show "anonymized N (M new)" and,
@@ -374,6 +376,41 @@ def _domain_surrogate_base(surrogate: str) -> str | None:
     return base if _DOMAIN_SUR_BASE.match(base) else None
 
 
+# ── Reverse-map snapshot cache ────────────────────────────────────────────────
+# deanonymize runs on every streamed text chunk, so re-reading the whole vault
+# (a SELECT + ORDER BY LENGTH) and recomputing each surrogate's domain base on
+# every call makes streaming slow down as the vault grows. Cache the prepared
+# snapshot — the sorted reverse list plus the precomputed (base, registrable)
+# pairs — keyed on (context, vault.generation). init()/reset() bump the
+# generation, so the cache invalidates itself the moment mappings change.
+_reverse_snapshot: tuple | None = None   # (key, reverse_list, base_pairs)
+
+
+def _reverse_data() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Return (reverse_list, base_pairs) for the current context, cached.
+
+    reverse_list: (surrogate, original) longest-surrogate-first (from the vault).
+    base_pairs:   (domain_base, registrable_original) for every non-email mapping
+                  whose surrogate yields a distinctive base — the second-pass set.
+    """
+    global _reverse_snapshot
+    # Key on writes too: get_or_create() inserts rows WITHOUT bumping generation
+    # (only init()/reset() do), so a generation-only key would miss new mappings.
+    key = (config.CONTEXT_ID, vault.generation, vault.writes)
+    if _reverse_snapshot is not None and _reverse_snapshot[0] == key:
+        return _reverse_snapshot[1], _reverse_snapshot[2]
+    reverse = vault.all_reverse_mappings()
+    base_pairs: list[tuple[str, str]] = []
+    for surrogate, original in reverse:
+        if not surrogate or "@" in original:
+            continue
+        base = _domain_surrogate_base(surrogate)
+        if base:
+            base_pairs.append((base, surrogates._registrable(original)))
+    _reverse_snapshot = (key, reverse, base_pairs)
+    return reverse, base_pairs
+
+
 def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
     """Return (restored_text, set of surrogates that were actually replaced).
 
@@ -385,7 +422,7 @@ def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
     if not text:
         return text, set()
 
-    reverse = vault.all_reverse_mappings()
+    reverse, base_pairs = _reverse_data()
     spans: list[tuple[int, int, str]] = []  # (start, end, original)
     for surrogate, original in reverse:
         if not surrogate:
@@ -404,13 +441,7 @@ def deanonymize_detailed(text: str) -> tuple[str, set[str]]:
     # the registrable domain. The base is a random letters-hyphen-letters token,
     # so matching it in prose is unambiguous. Full ".example" forms matched above
     # win via longest-match; here we skip a base followed by '.'/'-'/alnum.
-    for surrogate, original in reverse:
-        if not surrogate or "@" in original:
-            continue
-        base = _domain_surrogate_base(surrogate)
-        if not base:
-            continue
-        orig = surrogates._registrable(original)
+    for base, orig in base_pairs:
         start = 0
         while True:
             i = text.find(base, start)

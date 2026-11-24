@@ -74,6 +74,9 @@ async def test_token_required_when_set():
         assert (await c.get("/health")).status_code == 200          # always open
         assert (await c.get("/ui/stats")).status_code == 403         # missing token
         assert (await c.get("/s3cr3t/ui/stats")).status_code == 200  # with token
+        assert (await c.get("/wrong/ui/stats")).status_code == 403   # wrong token segment
+        assert (await c.get("/s3cr3tX/ui/stats")).status_code == 403 # near-miss, not a prefix match
+    config.TOKEN = ""
 
 
 # ── P3: every Ollama HTTP error is LLMUnavailable (fail-closed holds) ──────────

@@ -623,3 +623,15 @@ def test_ipv6_allowlist_and_false_positives_not_anonymized_as_ip(text):
     assert "::1" not in got and "2001:4860:4860::8888" not in got
     assert got.get("aa:bb:cc:dd:ee:ff") in (None, "MAC_ADDRESS")
     assert "12:34:56" not in got
+
+
+def test_reverse_cache_invalidates_when_new_mapping_added():
+    # Regression: the deanonymize snapshot is cached, but get_or_create() inserts
+    # rows WITHOUT bumping vault.generation. A generation-only cache key would go
+    # stale and fail to restore a newly-caught value after an earlier deanonymize
+    # already populated the snapshot. Key must also fold in vault.writes.
+    a1 = anonymizer.anonymize("first host one.example.net", source="test")
+    assert anonymizer.deanonymize(a1) == "first host one.example.net"  # populates snapshot
+    a2 = anonymizer.anonymize("second host two.example.org", source="test")  # new insert(s)
+    assert "two.example.org" not in a2
+    assert anonymizer.deanonymize(a2) == "second host two.example.org"

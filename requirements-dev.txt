@@ -1,0 +1,10 @@
+# Development / test dependencies. Install with:
+#   pip install -r requirements.txt -r requirements-dev.txt
+# Runtime (requirements.txt) deliberately excludes these so the Docker image and
+# a production install stay lean.
+pytest>=8.0,<10.0
+pytest-asyncio>=0.23,<2.0
+
+# Optional: enables in-process self-signed TLS generation (ANONPROXY_TLS=true)
+# without shelling out to the openssl CLI. The proxy also works without it.
+cryptography>=42,<100

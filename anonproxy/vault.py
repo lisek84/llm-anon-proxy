@@ -32,6 +32,8 @@ def _harden_db_perms(path: Path) -> None:
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 generation: int = 0  # bumped on init()/reset() so caches can invalidate
+writes: int = 0       # bumped on every new mapping insert; lets a reverse-map
+                      # cache detect rows added WITHOUT a generation bump
 
 
 def _connect(db_path: Path | None = None) -> sqlite3.Connection:
@@ -160,6 +162,8 @@ def get_or_create(original: str, entity_type: str, surrogate_fn, context: str | 
             (ctx, entity_type, original, candidate),
         )
         conn.commit()
+        global writes
+        writes += 1
         return candidate, True
 
 

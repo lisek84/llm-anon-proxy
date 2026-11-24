@@ -1,6 +1,7 @@
-fastapi
-uvicorn[standard]
-httpx
-pyahocorasick
-pytest
-pytest-asyncio
+# Runtime dependencies. Bounded so a future breaking major release can't silently
+# break `pip install` on a fresh machine (upper bounds), while security/bugfix
+# releases still flow in (lower bounds). Test-only deps live in requirements-dev.txt.
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.30,<1.0
+httpx>=0.27,<1.0
+pyahocorasick>=2.0,<3.0

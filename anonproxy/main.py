@@ -9,10 +9,12 @@ tool_result outputs) is anonymized before leaving the machine. Responses —
 including streamed text and tool_use arguments — are restored to real values
 before Claude Code sees them, so commands run against real hosts.
 """
+import hmac
 import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -27,49 +29,13 @@ from .config import config
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 log = logging.getLogger("anonproxy")
 
-app = FastAPI(title="anonproxy")
-
-
-class _TokenMiddleware(BaseHTTPMiddleware):
-    """If ANONPROXY_TOKEN is set, require it as a URL path prefix
-    (ANTHROPIC_BASE_URL=http://host:8787/<token>) and strip it before routing.
-    /health is always open. For non-loopback deployments."""
-
-    async def dispatch(self, request: Request, call_next):
-        token = config.TOKEN
-        if not token or request.url.path == "/health":
-            return await call_next(request)
-        # Preferred: a header (does not land in URL/access logs). Clients that
-        # can only set ANTHROPIC_BASE_URL (Claude Code) use the path prefix.
-        if request.headers.get("x-anonproxy-token") == token:
-            return await call_next(request)
-        prefix = f"/{token}"
-        path = request.url.path
-        if path == prefix or path.startswith(prefix + "/"):
-            stripped = path[len(prefix):] or "/"
-            request.scope["path"] = stripped
-            request.scope["raw_path"] = stripped.encode()
-            return await call_next(request)
-        return Response(content=json.dumps({"type": "error", "error": {
-            "type": "forbidden", "message": "missing or wrong proxy token"}}),
-            status_code=403, media_type="application/json")
-
-
-app.add_middleware(_TokenMiddleware)
-
-# RFC 7230 hop-by-hop headers (+ proxy auth, which is strictly between hops and
-# must never be forwarded) + our own auth header. Headers NAMED in a request's
-# `Connection` value are also hop-by-hop and are stripped dynamically below.
-_HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "accept-encoding",
-               "keep-alive", "te", "trailer", "upgrade", "proxy-connection",
-               "proxy-authenticate", "proxy-authorization",
-               "x-anonproxy-token"}  # our own auth header must never reach Anthropic
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    # Isolation preflight first: in 'enforce' mode this raises and the server
-    # does not come up if the agent could read the de-anonymization data.
+@asynccontextmanager
+async def _lifespan(app: "FastAPI"):
+    # Startup. In 'enforce' isolation mode preflight.run() raises and the server
+    # does not come up if the agent could read the de-anonymization data. This
+    # MUST run before the first request — a lifespan handler (not the deprecated
+    # on_event hook) so a future Starlette can't silently skip it and bring the
+    # proxy up without a loaded dictionary / vault.
     preflight.run()
     vault.init()
     dictionary.load()
@@ -89,6 +55,48 @@ async def _startup() -> None:
     log.info("context=%s upstream=%s llm=%s db=%s",
              config.CONTEXT_ID, config.UPSTREAM_URL, config.LLM_ENABLED, config.DB_PATH)
     log.info("dictionary entries loaded; listening on %s:%s", config.HOST, config.PORT)
+    yield
+
+
+app = FastAPI(title="anonproxy", lifespan=_lifespan)
+
+
+class _TokenMiddleware(BaseHTTPMiddleware):
+    """If ANONPROXY_TOKEN is set, require it as a URL path prefix
+    (ANTHROPIC_BASE_URL=http://host:8787/<token>) and strip it before routing.
+    /health is always open. For non-loopback deployments."""
+
+    async def dispatch(self, request: Request, call_next):
+        token = config.TOKEN
+        if not token or request.url.path == "/health":
+            return await call_next(request)
+        # Preferred: a header (does not land in URL/access logs). Clients that
+        # can only set ANTHROPIC_BASE_URL (Claude Code) use the path prefix.
+        # compare_digest keeps the match constant-time (no early-exit timing leak
+        # of the shared secret); the token is a single path segment with no '/'.
+        hdr = request.headers.get("x-anonproxy-token")
+        if hdr is not None and hmac.compare_digest(hdr, token):
+            return await call_next(request)
+        parts = request.url.path.split("/", 2)   # ["", "<seg>", "<rest>"]
+        if len(parts) >= 2 and hmac.compare_digest(parts[1], token):
+            stripped = "/" + (parts[2] if len(parts) > 2 else "")
+            request.scope["path"] = stripped
+            request.scope["raw_path"] = stripped.encode()
+            return await call_next(request)
+        return Response(content=json.dumps({"type": "error", "error": {
+            "type": "forbidden", "message": "missing or wrong proxy token"}}),
+            status_code=403, media_type="application/json")
+
+
+app.add_middleware(_TokenMiddleware)
+
+# RFC 7230 hop-by-hop headers (+ proxy auth, which is strictly between hops and
+# must never be forwarded) + our own auth header. Headers NAMED in a request's
+# `Connection` value are also hop-by-hop and are stripped dynamically below.
+_HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "accept-encoding",
+               "keep-alive", "te", "trailer", "upgrade", "proxy-connection",
+               "proxy-authenticate", "proxy-authorization",
+               "x-anonproxy-token"}  # our own auth header must never reach Anthropic
 
 
 # Headers Anthropic/the SDK legitimately need — not flagged as "unrecognized".
