@@ -128,7 +128,10 @@ _add("MAC_ADDRESS", r"\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b")
 # (?<![vV]) drops v4.14.5.1-style version strings.
 _IP = r"(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)"
 _IP_PRE = r"(?<!\d)(?<!\d\.)(?<![vV])"
-_IP_POST = r"(?!\d)(?!\.\d)"
+# Trailing guard: not a digit / .digit (OID or longer dotted run), and not a
+# "-<letter>" suffix — that is a kernel/package version (6.18.58.1-microsoft,
+# x.y.z.n-generic), never an IP (an IP range uses "-<digit>", still allowed).
+_IP_POST = r"(?!\d)(?!\.\d)(?!-[A-Za-z])"
 _add("CIDR", rf"{_IP_PRE}{_IP}/\d{{1,2}}(?!\d)")
 _add("IP_ADDRESS", rf"{_IP_PRE}{_IP}{_IP_POST}")
 
@@ -285,6 +288,13 @@ _PLACEHOLDER_VALUE = re.compile(
 )
 
 
+# systemd unit names (getty@tty1.service, user@1000.service, dbus.socket, …) look
+# like an email or a domain but are local OS plumbing, not infra identifiers.
+_SYSTEMD_UNIT = re.compile(
+    r"\.(?:service|socket|device|mount|automount|swap|target|path|timer|slice|scope)$",
+    re.IGNORECASE)
+
+
 def detect(text: str) -> list[tuple[str, str]]:
     if not text:
         return []
@@ -299,6 +309,8 @@ def detect(text: str) -> list[tuple[str, str]]:
             val = val.strip().strip("'\"")
             if not val:
                 continue
+            if etype in ("EMAIL", "DOMAIN") and _SYSTEMD_UNIT.search(val):
+                continue  # getty@tty1.service / user@1000.service — a systemd unit, not infra
             if etype == "EMAIL" and _DSN_BEFORE.search(text[max(0, mstart - 256):mstart]):
                 continue  # "pass@host" in a DSN — not an email (window keeps this O(1))
             if etype == "EMAIL" and (val.lower() in _EMAIL_ALLOWLIST or val.lower() in _USER_ALLOW):

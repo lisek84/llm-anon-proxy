@@ -731,3 +731,31 @@ def test_many_short_prefix_cidrs_get_distinct_surrogates_no_crash():
         assert s.split("/")[1] == c.split("/")[1], f"{c} -> {s} changed prefix length"
         net = ipaddress.ip_network(s)
         assert net.is_private or net.is_reserved, f"{c} -> {s} is routable, not reserved"
+
+
+@pytest.mark.parametrize("text", [
+    "getty@tty1.service", "serial-getty@ttyS0.service", "user@1000.service",
+    "dbus.socket", "foo.timer", "bar.mount", "systemd-udevd.service",
+])
+def test_systemd_units_not_anonymized(text):
+    # systemd unit names look like an email/domain but are local OS plumbing.
+    from anonproxy import regex_detector as rd
+    assert rd.detect(text) == [], f"systemd unit wrongly detected: {text!r}"
+    assert anonymizer.anonymize(text, source="test") == text  # passes through untouched
+
+
+@pytest.mark.parametrize("text,ver", [
+    ("Linux 6.18.58.1-microsoft-standard-WSL2", "6.18.58.1"),
+    ("kernel 4.19.0.0-amd64", "4.19.0.0"),
+])
+def test_kernel_version_with_named_suffix_not_an_ip(text, ver):
+    # A 4-dotted version followed by "-<letter>" (kernel/package build) is not an IP.
+    from anonproxy import regex_detector as rd
+    assert ver not in {v for v, _ in rd.detect(text)}
+
+
+def test_ip_ranges_and_real_ips_still_caught():
+    # Guard must not break real IPs or "-<digit>" ranges. (RFC 5737 doc addresses.)
+    from anonproxy import regex_detector as rd
+    got = {v for v, _ in rd.detect("hosts 203.0.113.7 and 198.51.100.1-198.51.100.9")}
+    assert {"203.0.113.7", "198.51.100.1", "198.51.100.9"} <= got
