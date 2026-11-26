@@ -49,6 +49,11 @@ Następnie w konsoli roboczej:
 ```
 
 * Proxy publikowane jest wyłącznie na `127.0.0.1:8787`. Dashboard: `http://127.0.0.1:8787/ui`.
+* **Ustawienia przez `.env`** (opcjonalnie): `cp .env.example .env`, potem odkomentuj
+  dowolne `ANONPROXY_*` z tego manuala. `docker compose up -d` wstrzykuje cały plik do
+  kontenera (patrz `env_file` w `docker-compose.yml`), więc nie jesteś ograniczony do
+  kilku wstępnie podpiętych zmiennych i nie musisz niczego eksportować w linii poleceń.
+  Twój `.env` jest w `.gitignore`; `.env.example` to szablon w repo.
 * Stan (vault, klucz, logi rotacji + audytu) zapisywany jest do **`./data`** obok
   `docker-compose.yml`; słownik montowany jest tylko do odczytu z `./dictionary.yaml`.
 * Podgląd logów z kontenera:

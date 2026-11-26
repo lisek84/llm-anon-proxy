@@ -1,7 +1,8 @@
 # Turnkey Docker deployment.
 #
-#   git clone … /llm-anon-proxy && cd /llm-anon-proxy
+#   git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 #   cp dictionary.example.yaml dictionary.yaml   # then edit with YOUR values
+#   cp .env.example .env                         # optional: tune ANONPROXY_* settings
 #   docker compose up -d                         # proxy only (dictionary + regex)
 #
 # With the local LLM layer (pulls the model; uses an NVIDIA GPU by default, which
@@ -35,6 +36,16 @@ services:
     cap_drop: [ALL]                   # the proxy needs no Linux capabilities
     security_opt:
       - no-new-privileges:true        # block setuid privilege escalation
+    # Optional local overrides: put any ANONPROXY_* from the manual in a `.env`
+    # (copy .env.example) and it is injected into the container as-is — you are
+    # not limited to the variables interpolated below. `required: false` means a
+    # missing .env is fine (needs Compose v2.24+; on older, use `env_file: [.env]`
+    # and keep a .env present). The `environment:` block below still provides the
+    # defaults and the values that MUST stay fixed inside the compose network
+    # (e.g. the Ollama URL), which take precedence over .env.
+    env_file:
+      - path: .env
+        required: false
     environment:
       ANONPROXY_LLM: ${ANONPROXY_LLM:-false}
       ANONPROXY_OLLAMA_HOST: http://ollama:11434

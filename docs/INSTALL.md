@@ -49,6 +49,11 @@ Then in your working console:
 ```
 
 * The proxy is published on `127.0.0.1:8787` only. Dashboard: `http://127.0.0.1:8787/ui`.
+* **Settings via `.env`** (optional): `cp .env.example .env`, then uncomment any
+  `ANONPROXY_*` from this manual. `docker compose up -d` injects the whole file into
+  the container (see `env_file` in `docker-compose.yml`), so you are not limited to
+  the handful of pre-wired variables and you don't need to export anything on the
+  command line. Your `.env` is gitignored; `.env.example` is the committed template.
 * State (vault, secret key, rotation + audit logs) is written to **`./data`** next
   to `docker-compose.yml`; the dictionary is bind-mounted read-only from `./dictionary.yaml`.
 * Inspect logs from the container:
