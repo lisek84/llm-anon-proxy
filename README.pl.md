@@ -62,7 +62,7 @@ przywracane w drodze z powrotem.
 środowisko i zapisuje cały stan obok pliku compose:
 
 ```bash
-git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
+git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml   # uzupełnij SWOIMI wartościami
 
 id 991; getent passwd 991                    # oba bez wyniku: 991 nie może być użytkownikiem agenta

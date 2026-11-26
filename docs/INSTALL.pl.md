@@ -12,7 +12,7 @@ Na maszynie z Dockerem całe środowisko podnosi się jedną komendą, a cały s
 zapisywany jest obok pliku compose.
 
 ```bash
-git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
+git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # potem uzupełnij SWOIMI wartościami
 
 # Kontener działa jako DEDYKOWANY UID (991), celowo NIE Twój użytkownik — to ten
@@ -71,7 +71,7 @@ Reszta tej strony to ścieżka **natywna** (bez Dockera).
 ## 1. Proxy (natywnie)
 
 ```bash
-cd ~/llm-anon-proxy
+git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 bash scripts/setup-proxy.sh        # venv + zależności + dictionary.yaml do edycji
 ```
 

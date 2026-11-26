@@ -60,7 +60,7 @@ all of that. Everything is anonymized on the way out and restored on the way in.
 environment and writes all state next to the compose file:
 
 ```bash
-git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
+git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml   # edit with YOUR values
 
 id 991; getent passwd 991                    # both must print nothing (also covers LDAP/NSS)

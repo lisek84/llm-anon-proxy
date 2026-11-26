@@ -12,7 +12,7 @@ On a machine with Docker, the whole environment comes up with one command and al
 state is written next to the compose file.
 
 ```bash
-git clone <repo> /llm-anon-proxy && cd /llm-anon-proxy
+git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 cp dictionary.example.yaml dictionary.yaml     # then edit with YOUR values
 
 # The container runs as a DEDICATED UID (991), deliberately NOT your user — that
@@ -71,7 +71,7 @@ The rest of this page is the **native** path (no Docker).
 ## 1. The proxy (native)
 
 ```bash
-cd ~/llm-anon-proxy
+git clone https://github.com/lisek84/llm-anon-proxy.git ~/llm-anon-proxy && cd ~/llm-anon-proxy
 bash scripts/setup-proxy.sh        # venv + deps + a dictionary.yaml to edit
 ```
 
