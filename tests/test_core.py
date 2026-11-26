@@ -598,10 +598,13 @@ def test_ipv6_surrogate_ranges():
 
 
 @pytest.mark.parametrize("orig,reserved", [
-    ("51.75.0.0/8", "198.18.0.0/15"),     # public, wider than /15 — must clamp
-    ("51.75.0.0/16", "198.18.0.0/15"),
-    ("51.75.1.0/24", "198.18.0.0/15"),
-    ("51.75.1.9/32", "198.18.0.0/15"),
+    # Public CIDR surrogates live in 240.0.0.0/4 (RFC 1112) — a /4 is wide enough
+    # that short prefixes (/8../16) still have many distinct networks, so a list of
+    # them can't collapse and exhaust the vault (the live 500 regression).
+    ("51.75.0.0/8", "240.0.0.0/4"),       # public, short prefix — must stay reserved
+    ("51.75.0.0/16", "240.0.0.0/4"),
+    ("51.75.1.0/24", "240.0.0.0/4"),
+    ("51.75.1.9/32", "240.0.0.0/4"),
     ("10.9.0.0/8", "10.0.0.0/8"),         # private
     ("172.16.0.0/12", "10.0.0.0/8"),
 ])
@@ -611,19 +614,17 @@ def test_ipv4_cidr_surrogate_stays_in_reserved_space(orig, reserved):
     assert net.subnet_of(ipaddress.ip_network(reserved)), f"{orig} -> {net} escaped {reserved}"
 
 
-@pytest.mark.parametrize("orig,reserved", [
-    ("2a01:4f8::/16", "2001:db8::/32"),   # wider than the doc prefix — must clamp, not escape
-    ("2a01:4f8::/24", "2001:db8::/32"),
-    ("2a01:4f8::/32", "2001:db8::/32"),
-    ("2a01:4f8:1::/48", "2001:db8::/32"),
-    ("2a01:4f8:1::/64", "2001:db8::/32"),
-    ("fc00::/7", "fd00::/8"),             # wider than ULA fd00::/8 — must clamp
-    ("fd12:3456::/32", "fd00::/8"),
+@pytest.mark.parametrize("orig", [
+    # IPv6 CIDR surrogates live in the ULA space fd00::/8 (floor /8) — a /8 holds
+    # 2**(p-8) distinct /p networks, so many same-size prefixes (e.g. Cloudflare's
+    # IPv6 /32s) can't collapse to one network and exhaust the vault.
+    "2a01:4f8::/16", "2a01:4f8::/24", "2a01:4f8::/32",
+    "2a01:4f8:1::/48", "2a01:4f8:1::/64", "fc00::/7", "fd12:3456::/32",
 ])
-def test_ipv6_cidr_surrogate_stays_in_reserved_space(orig, reserved):
+def test_ipv6_cidr_surrogate_stays_in_reserved_space(orig):
     import ipaddress
     net = ipaddress.ip_network(surrogates.generate(orig, "CIDR"))
-    assert net.subnet_of(ipaddress.ip_network(reserved)), f"{orig} -> {net} escaped {reserved}"
+    assert net.subnet_of(ipaddress.ip_network("fd00::/8")), f"{orig} -> {net} escaped fd00::/8"
 
 
 @pytest.mark.parametrize("text", [
@@ -708,3 +709,25 @@ def test_credential_rule_does_not_span_newlines():
     assert "echo hi" in anon                 # the following script is untouched
     assert "case $x in" in anon
     assert back == text                      # exact round-trip
+
+
+def test_many_short_prefix_cidrs_get_distinct_surrogates_no_crash():
+    # Regression (live 500): short-prefix CIDRs (/13../16) collapsed to a single
+    # reserved network and exhausted get_or_create -> RuntimeError -> 500 on the
+    # whole request, which Claude Code then retried forever. A real Cloudflare/
+    # firewall IP list (many /13../17 + many IPv6 /32) wedged a session.
+    import ipaddress
+    cidrs = []
+    cidrs += [f"100.{64 + i * 2}.0.0/15" for i in range(16)]   # 16 distinct /15 (public)
+    cidrs += [f"104.{i * 8}.0.0/13" for i in range(8)]         # 8 distinct /13
+    cidrs += [f"45.{i}.0.0/16" for i in range(32)]             # 32 distinct /16
+    cidrs += [f"2a0{i % 10}:{i:x}00::/32" for i in range(20)]  # 20 distinct IPv6 /32
+    surs = {}
+    for c in cidrs:
+        s, _ = vault.get_or_create(c, "CIDR", surrogates.generate)  # must not raise
+        surs[c] = s
+    assert len(set(surs.values())) == len(cidrs), "surrogate collision among CIDRs"
+    for c, s in surs.items():
+        assert s.split("/")[1] == c.split("/")[1], f"{c} -> {s} changed prefix length"
+        net = ipaddress.ip_network(s)
+        assert net.is_private or net.is_reserved, f"{c} -> {s} is routable, not reserved"

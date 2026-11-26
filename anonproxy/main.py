@@ -596,6 +596,15 @@ async def messages(request: Request) -> Response:
     except UnscannableContent as exc:
         return _blocked_response(f"request contains an unscannable '{exc}' block "
                                  "(ANONPROXY_BLOCK_UNSCANNABLE=true)")
+    except Exception:  # noqa: BLE001
+        # Any other anonymization failure must FAIL CLOSED with a clear message,
+        # never crash into a bare 500 that Claude Code retries forever on the same
+        # (still un-anonymized) body. The body is not safely scrubbed here, so it
+        # is never forwarded.
+        log.exception("anonymization failed; blocking request (nothing forwarded)")
+        return _blocked_response("the proxy could not fully anonymize this request, so it "
+                                 "was blocked to avoid leaking un-redacted data. See the "
+                                 "proxy log for details.")
 
     try:
         leaks = anonymizer.scan_body_for_leaks(body, "messages")
@@ -661,6 +670,10 @@ async def count_tokens(request: Request) -> Response:
         return _llm_down_response()
     except UnscannableContent as exc:
         return _blocked_response(f"request contains an unscannable '{exc}' block")
+    except Exception:  # noqa: BLE001
+        log.exception("anonymization failed in count_tokens; blocking (nothing forwarded)")
+        return _blocked_response("the proxy could not fully anonymize this request, so it "
+                                 "was blocked to avoid leaking un-redacted data.")
     try:
         leaks = anonymizer.scan_body_for_leaks(body, "count_tokens")
         if leaks:

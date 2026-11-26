@@ -164,11 +164,20 @@ def _fake_cidr(original: str, attempt: int, private: bool) -> str:
         prefix = int(original.split("/")[-1])
     except ValueError:
         prefix = 24
-    base = _fake_ipv4(original, attempt, private)   # in 198.18.0.0/15 or 10.0.0.0/8
-    # Same guard as IPv6: masking to a prefix wider than the reserved space would
-    # escape it (a /8 base -> 198.0.0.0/8). Never emit a network wider than the
-    # reserved prefix (/15 public, /8 private); normalize so no host bits remain.
-    floor = 8 if private else 15
+    d = _digest("CIDR", original, attempt)
+    # The surrogate must be a network of the SAME prefix length inside a reserved
+    # pool. A short prefix (/13../16) has very few distinct networks in a small
+    # pool: masking a /15 base into a /15 always collapses to the ONE /15 the pool
+    # contains, so two different /15 originals could never get distinct surrogates
+    # and get_or_create would spin to its cap and raise (→ a 500 that wedged the
+    # whole request). Use a pool wide enough that even short CDN/firewall prefixes
+    # keep thousands of distinct networks.
+    if private:
+        floor = 8                                   # 10.0.0.0/8
+        base = f"10.{d[0]}.{d[1]}.{d[2]}"
+    else:
+        floor = 4                                   # 240.0.0.0/4 (RFC 1112, never routed)
+        base = f"{240 + (d[0] % 16)}.{d[1]}.{d[2]}.{d[3]}"
     eff = min(max(prefix, floor), 32)
     net = ipaddress.ip_network(f"{base}/{eff}", strict=False)
     return f"{net.network_address}/{eff}"
@@ -191,14 +200,16 @@ def _fake_ipv6_cidr(original: str, attempt: int, private: bool) -> str:
         prefix = int(original.split("/")[-1])
     except ValueError:
         prefix = 64
-    base = _fake_ipv6(original, attempt, private)   # inside 2001:db8::/32 or fd00::/8
-    # Masking to a prefix SHORTER than the reserved space would zero out the
-    # reserved bits and escape it (/16 -> 2001::/16, a real global range). Never
-    # emit a network wider than the reserved prefix: clamp up to its boundary
-    # (32 for the doc prefix, 8 for ULA). Longer prefixes stay inside untouched.
-    floor = 8 if private else 32
-    eff = min(max(prefix, floor), 128)
-    net = ipaddress.ip_network(f"{base}/{eff}", strict=False)
+    # Same collapse hazard as IPv4: the doc prefix 2001:db8::/32 is a /32, so every
+    # IPv6 CIDR of prefix ≤/32 (e.g. each Cloudflare /32) would map to the ONE
+    # 2001:db8::/32 and collide forever. Put IPv6 CIDR surrogates in the ULA space
+    # fd00::/8 (floor /8) — a /8 holds 2**(p-8) distinct /p networks, ample for any
+    # real list. ULA is unmistakably non-routed, so it is safe as a surrogate.
+    d = _digest("IP6CIDR", original, attempt)
+    val = int.from_bytes(d[:16].ljust(16, b"\0"), "big")
+    val = (0xFD << 120) | (val & ((1 << 120) - 1))   # into fd00::/8
+    eff = min(max(prefix, 8), 128)
+    net = ipaddress.ip_network(f"{ipaddress.IPv6Address(val)}/{eff}", strict=False)
     return f"{net.network_address}/{eff}"
 
 
